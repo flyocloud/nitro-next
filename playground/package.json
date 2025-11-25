@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@flyo/nitro-next": "1.0.0",
-    "next": "^14.2.25",
+    "next": "^16.0.4",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
   },

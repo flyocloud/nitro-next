@@ -4,7 +4,6 @@ import { Block } from "@flyo/nitro-typescript";
 
 export function HeroBanner({block}: {block: Block}) {
 
-    console.log(block);
 
     return (
         <section className="bg-gray-200 p-8 rounded-lg text-center">

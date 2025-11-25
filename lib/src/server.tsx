@@ -4,7 +4,8 @@ import {
   ConfigApi,
   ConfigResponse,
   Configuration,
-  PagesApi
+  PagesApi,
+  EntitiesApi
 } from '@flyo/nitro-typescript';
 
 let globalConfiguration: Configuration | null = null;
@@ -56,8 +57,12 @@ export async function useConfigApi(): Promise<ConfigResponse> {
     return configPromise;
 }
 
-export function usePagesApi() {
+export function usePagesApi(): PagesApi {
   return new PagesApi(globalConfiguration!);
+}
+
+export function useEntitiesApi(): EntitiesApi {
+  return new EntitiesApi(globalConfiguration!);
 }
 
 

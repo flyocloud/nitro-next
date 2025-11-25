@@ -1,6 +1,5 @@
 'use client';
 
-import { useConfig } from "@flyo/nitro-next/client";
 import { ConfigResponse } from "@flyo/nitro-typescript";
 import Link from "next/link";
 
