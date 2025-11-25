@@ -7,12 +7,26 @@
     "./playground"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=lib",
-    "build": "npm run build --workspace=lib",
-    "playground": "npm run dev --workspace=playground"
+    "dev": "npm run dev --workspace=@flyo/nitro-next",
+    "build": "npm run build --workspace=@flyo/nitro-next",
+    "playground": "npm run dev --workspace=@flyo/nitro-next-playground",
+    "ci-test": "npm run test --workspace=@flyo/nitro-next && npm run test --workspace=@flyo/nitro-next-playground",
+    "test": "npm run ci-test",
+    "lint": "npm run lint --workspaces",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "playground/**/*.{js,jsx,ts,tsx}": [
+      "npm run lint --workspace=playground"
+    ],
+    "lib/**/*.{js,jsx,ts,tsx}": [
+      "npm run lint --workspace=lib"
+    ]
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "typescript": "^5.3.0"
   },
   "dependencies": {

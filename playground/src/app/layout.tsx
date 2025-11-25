@@ -1,7 +1,7 @@
 import { Flyo } from "@/flyo.config";
 import type { ReactNode } from 'react';
 import { Header } from './header';
-import { useConfigApi } from "@flyo/nitro-next";
+import { getConfig } from "@flyo/nitro-next";
 
 export default async function RootLayout({
   children,
@@ -9,7 +9,7 @@ export default async function RootLayout({
   children: ReactNode;
 }) {
 
-  const config = await useConfigApi();
+  const config = await getConfig();
 
   return (
     <Flyo>

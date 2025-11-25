@@ -12,6 +12,7 @@ let globalConfiguration: Configuration | null = null;
 let configResponse: ConfigResponse | null = null;
 let configPromise: Promise<ConfigResponse> | null = null;
 let globalLang: string | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let globalComponents: Record<string, any> = {};
 
 export const FlyoNitroConfiguration = ({accessToken, lang, components}: {accessToken: string, lang?: string, components?: object}): ( () => Configuration )   => {
@@ -28,9 +29,9 @@ export const FlyoNitroConfiguration = ({accessToken, lang, components}: {accessT
     return () => globalConfiguration!;
 }
 
-export async function useConfigApi(): Promise<ConfigResponse> {
+export async function getConfig(): Promise<ConfigResponse> {
 
-    console.log('\n[useConfigApi] call');
+    console.log('\n[getConfig] call');
 
     if (configResponse) {
       return configResponse;
@@ -51,17 +52,17 @@ export async function useConfigApi(): Promise<ConfigResponse> {
       })
       .finally(() => {
         configPromise = null;
-        console.log('\n[useConfigApi] fetched config');
+        console.log('\n[getConfig] fetched config');
       });
 
     return configPromise;
 }
 
-export function usePagesApi(): PagesApi {
+export function getPagesApi(): PagesApi {
   return new PagesApi(globalConfiguration!);
 }
 
-export function useEntitiesApi(): EntitiesApi {
+export function getEntitiesApi(): EntitiesApi {
   return new EntitiesApi(globalConfiguration!);
 }
 
@@ -80,7 +81,7 @@ export function FlyoNitroPage({
 
   return (
     <>
-      {page.json.map((block: any, index: number) => (
+      {page.json.map((block: Block, index: number) => (
         <FlyoNitroBlock
           key={block.uid || index}
           block={block}

@@ -11,7 +11,6 @@ import { HeroBanner } from './components/HeroBanner';
 
 // Get configuration from environment variables
 const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
-const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
 
 
 export const flyoConfig = FlyoNitroConfiguration({

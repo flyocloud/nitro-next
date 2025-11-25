@@ -3,8 +3,9 @@ export {
   FlyoNitroBlock,
   FlyoNitroPage,
   FlyoNitroConfiguration,
-  useConfigApi,
-  usePagesApi
+  getConfig,
+  getPagesApi,
+  getEntitiesApi
 } from './server';
 
 // Client exports - import from '@flyo/nitro-next/client'

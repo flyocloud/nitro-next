@@ -1,15 +1,15 @@
 import React from 'react';
 import '@testing-library/jest-dom'; // Add this line
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import {
   FlyoNitroConfiguration,
-  useConfigApi,
+  getConfig,
   FlyoNitroPage,
   FlyoNitroBlock,
-  usePagesApi,
-  useEntitiesApi
+  getPagesApi,
+  getEntitiesApi
 } from './server';
-import { ConfigApi, PagesApi, EntitiesApi, Configuration } from '@flyo/nitro-typescript';
+import { PagesApi, EntitiesApi, Configuration, Page, Block } from '@flyo/nitro-typescript';
 
 // Mock @flyo/nitro-typescript
 jest.mock('@flyo/nitro-typescript', () => {
@@ -31,16 +31,17 @@ describe('FlyoNitroConfiguration', () => {
   });
 });
 
-describe('useConfigApi', () => {
-  it('fetches configuration', async () => {
-    const config = await useConfigApi();
+describe('getConfig', () => {
+
+  it('returns config', async () => {
+    const config = await getConfig();
     expect(config).toEqual({ title: 'Mock Config' });
   });
 });
 
 describe('FlyoNitroPage', () => {
   it('renders nothing if page json is missing', () => {
-    const { container } = render(<FlyoNitroPage page={{} as any} />);
+    const { container } = render(<FlyoNitroPage page={{} as Page} />);
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -50,10 +51,11 @@ describe('FlyoNitroPage', () => {
         { uid: '1', component: 'TestBlock', content: 'Block 1' },
         { uid: '2', component: 'TestBlock', content: 'Block 2' },
       ],
-    } as any;
+    } as unknown as Page;
 
     // Register a component for TestBlock
-    const TestBlock = ({ block }: any) => <div>{block.content}</div>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TestBlock = ({ block }: { block: Block }) => <div>{(block as any).content}</div>;
     FlyoNitroConfiguration({ 
         accessToken: 'test', 
         components: { TestBlock } 
@@ -67,15 +69,16 @@ describe('FlyoNitroPage', () => {
 
 describe('FlyoNitroBlock', () => {
   it('renders fallback if component not found', () => {
-    const block = { uid: '1', component: 'Unknown', content: 'Hidden' } as any;
+    const block = { uid: '1', component: 'Unknown', content: 'Hidden' } as unknown as Block;
     render(<FlyoNitroBlock block={block} />);
     // The fallback renders JSON
     expect(screen.getByText((content) => content.includes('Unknown'))).toBeInTheDocument();
   });
 
   it('renders component if found', () => {
-    const block = { uid: '1', component: 'Known', content: 'Visible' } as any;
-    const Known = ({ block }: any) => <div>{block.content}</div>;
+    const block = { uid: '1', component: 'Known', content: 'Visible' } as unknown as Block;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const Known = ({ block }: { block: Block }) => <div>{(block as any).content}</div>;
     
     FlyoNitroConfiguration({ 
         accessToken: 'test', 
@@ -88,13 +91,13 @@ describe('FlyoNitroBlock', () => {
 });
 
 describe('Hooks', () => {
-    it('usePagesApi returns PagesApi instance', () => {
-        const api = usePagesApi();
+    it('getPagesApi returns PagesApi instance', () => {
+        const api = getPagesApi();
         expect(api).toBeInstanceOf(PagesApi);
     });
 
-    it('useEntitiesApi returns EntitiesApi instance', () => {
-        const api = useEntitiesApi();
+    it('getEntitiesApi returns EntitiesApi instance', () => {
+        const api = getEntitiesApi();
         expect(api).toBeInstanceOf(EntitiesApi);
     });
 });

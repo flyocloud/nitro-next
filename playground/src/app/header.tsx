@@ -1,6 +1,6 @@
 'use client';
 
-import { ConfigResponse } from "@flyo/nitro-typescript";
+import { ConfigResponse, ContainerPage } from "@flyo/nitro-typescript";
 import Link from "next/link";
 
 export function Header({config}: {config: ConfigResponse}) {
@@ -22,10 +22,10 @@ export function Header({config}: {config: ConfigResponse}) {
         </h1>
         <nav>
           <ul className="flex gap-6">
-            {navItems.map((item: any, index: number) => (
+            {navItems.map((item: ContainerPage, index: number) => (
               <li key={index}>
                 <Link 
-                  href={item.href} 
+                  href={item.href || '#'} 
                   target={item.target}
                   className="hover:underline"
                 >
