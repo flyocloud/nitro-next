@@ -1,27 +1,23 @@
-import { FlyoNitroPage, getConfig, usePagesApi } from "@flyo/nitro-next";
+import { FlyoNitroPage, useConfigApi, usePagesApi } from "@flyo/nitro-next";
 import { notFound } from 'next/navigation';
 
 export default async function Page({ params }: { params: { slug?: string[] } }) {
-  // Import getConfig from the main package
-
-  const slug = params.slug?.join('/') || '';
   
-  const cfg = await getConfig();
-  
-  console.log('\n\n[SERVER PAGE COMPONENT - CONFIG]', cfg);
+  const slug = params.slug?.join('/') ?? '';
 
-  if (!cfg.pages || !cfg.pages.includes(slug)) {
+  const cfg = await useConfigApi();
+
+  if (!cfg.pages?.includes(slug)) {
     notFound();
   }
 
-  try {
-    const api = usePagesApi();
-    const page = await api.page({slug});
+  const page = await usePagesApi()
+    .page({ slug })
+    .catch((error: unknown) => {
+      console.error('Error fetching page:', slug, error);
+      notFound(); // typed as never, so execution stops here
+    });
 
-    console.log('\n\n[SERVER PAGE COMPONENT]\n\n', { slug, page });
-  } catch (e) {
-    console.error('Error fetching page:', e.response.url, slug);
-  }
 
   return (
     <FlyoNitroPage page={page} />

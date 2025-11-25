@@ -1,7 +1,7 @@
 import { Flyo } from "@/flyo.config";
-import { getConfig } from "@flyo/nitro-next/server";
 import type { ReactNode } from 'react';
 import { Header } from './header';
+import { useConfigApi } from "@flyo/nitro-next";
 
 export default async function RootLayout({
   children,
@@ -9,16 +9,14 @@ export default async function RootLayout({
   children: ReactNode;
 }) {
 
-  const cfg = await getConfig();
-
-  console.log('serverside config', cfg)
+  const config = await useConfigApi();
 
   return (
     <Flyo>
       <html lang="en">
         <body>
+          <Header config={config} />
           <div className="min-h-screen">
-            <Header />
             <main className="container mx-auto p-4">
               {children}
             </main>

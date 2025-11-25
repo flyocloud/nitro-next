@@ -6,11 +6,21 @@
  */
 
 import type { ReactNode } from 'react';
-import { FlyoProvider } from '@flyo/nitro-next';
+import { FlyoNitroConfiguration } from '@flyo/nitro-next';
+import { HeroBanner } from './components/HeroBanner';
 
 // Get configuration from environment variables
 const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
 const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
+
+
+export const flyoConfig = FlyoNitroConfiguration({
+    accessToken: accessToken,
+    lang: 'en',
+    components: {
+        HeroBanner: HeroBanner
+    }
+});
 
 /**
  * Pre-configured FlyoProvider component
@@ -19,12 +29,9 @@ const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
  * Wrap your app with this component in your root layout.
  */
 export function Flyo({ children }: { children: ReactNode }) {
-  return (
-    <FlyoProvider 
-        accessToken={accessToken} 
-        liveEdit={liveEdit}
-    >
-        {children}
-    </FlyoProvider>
-    );
+
+    flyoConfig();
+    
+    return children;
 }
+

@@ -1,14 +1,16 @@
 'use client';
 
 import { useConfig } from "@flyo/nitro-next/client";
+import { ConfigResponse } from "@flyo/nitro-typescript";
 import Link from "next/link";
 
-export function Header() {
-
-  console.log('\n\n[CLIENT HEADER COMPONENT]\n\n')
+export function Header({config}: {config: ConfigResponse}) {
   
-  // use the config context which only works in client components
-  const config = useConfig();
+  console.log('\n[CLIENT HEADER COMPONENT]\n')
+
+  // just for test resolve config on client what happns
+
+  
 
   const navContainer = config?.containers?.nav || []
   const navItems = Array.isArray(navContainer) ? [] : (navContainer.items || []);

@@ -1,16 +1,10 @@
 // Main provider component (server component that fetches config)
-export { FlyoProvider, 
+export {
   FlyoNitroBlock,
-  FlyoNitroPage } from './server';
-
-// Server utilities (use in server-side code or server components)
-export { 
-  initializeConfiguration, 
-  getGlobalConfiguration, 
-  getOrFetchConfig,
-  getConfig,
-  clearConfigCache,
-  usePagesApi,
+  FlyoNitroPage,
+  FlyoNitroConfiguration,
+  useConfigApi,
+  usePagesApi
 } from './server';
 
 // Client exports - import from '@flyo/nitro-next/client'
