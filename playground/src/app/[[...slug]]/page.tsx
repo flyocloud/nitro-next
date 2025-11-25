@@ -1,4 +1,4 @@
-import { FlyoNitroPage, getConfig, getPagesApi } from "@flyo/nitro-next";
+import { NitroPage, getNitroConfig, getNitroPages } from "@flyo/nitro-next";
 import { notFound } from 'next/navigation';
 
 export default async function Page({
@@ -9,13 +9,13 @@ export default async function Page({
   const { slug } = await params;
   const path = slug?.join('/') ?? '';
 
-  const cfg = await getConfig();
+  const cfg = await getNitroConfig();
 
   if (!cfg.pages?.includes(path)) {
     notFound();
   }
 
-  const page = await getPagesApi()
+  const page = await getNitroPages()
     .page({ slug: path })
     .catch((error: unknown) => {
       console.error('Error fetching page:', path, error);
@@ -24,6 +24,6 @@ export default async function Page({
 
 
   return (
-    <FlyoNitroPage page={page} />
+    <NitroPage page={page} />
   )
 }

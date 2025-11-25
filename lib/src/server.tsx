@@ -15,7 +15,7 @@ let globalLang: string | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let globalComponents: Record<string, any> = {};
 
-export const FlyoNitroConfiguration = ({accessToken, lang, components}: {accessToken: string, lang?: string, components?: object}): ( () => Configuration )   => {
+export const initNitro = ({accessToken, lang, components}: {accessToken: string, lang?: string, components?: object}): ( () => Configuration )   => {
 
     if (!globalConfiguration) {
       globalConfiguration = new Configuration({
@@ -29,9 +29,9 @@ export const FlyoNitroConfiguration = ({accessToken, lang, components}: {accessT
     return () => globalConfiguration!;
 }
 
-export async function getConfig(): Promise<ConfigResponse> {
+export async function getNitroConfig(): Promise<ConfigResponse> {
 
-    console.log('\n[getConfig] call');
+    console.log('\n[getNitroConfig] call');
 
     if (configResponse) {
       return configResponse;
@@ -52,25 +52,25 @@ export async function getConfig(): Promise<ConfigResponse> {
       })
       .finally(() => {
         configPromise = null;
-        console.log('\n[getConfig] fetched config');
+        console.log('\n[getNitroConfig] fetched config');
       });
 
     return configPromise;
 }
 
-export function getPagesApi(): PagesApi {
+export function getNitroPages(): PagesApi {
   return new PagesApi(globalConfiguration!);
 }
 
-export function getEntitiesApi(): EntitiesApi {
+export function getNitroEntities(): EntitiesApi {
   return new EntitiesApi(globalConfiguration!);
 }
 
 
 /**
- * FlyoNitroPage component renders all blocks from a Flyo page
+ * NitroPage component renders all blocks from a Flyo page
  */
-export function FlyoNitroPage({
+export function NitroPage({
   page,
 }: {
   page: Page
@@ -82,7 +82,7 @@ export function FlyoNitroPage({
   return (
     <>
       {page.json.map((block: Block, index: number) => (
-        <FlyoNitroBlock
+        <NitroBlock
           key={block.uid || index}
           block={block}
         />
@@ -91,7 +91,7 @@ export function FlyoNitroPage({
   );
 }
 
-export function FlyoNitroBlock({
+export function NitroBlock({
   block,
 }: {
   block: Block

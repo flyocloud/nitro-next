@@ -6,14 +6,14 @@
  */
 
 import type { ReactNode } from 'react';
-import { FlyoNitroConfiguration } from '@flyo/nitro-next';
+import { initNitro } from '@flyo/nitro-next';
 import { HeroBanner } from './components/HeroBanner';
 
 // Get configuration from environment variables
 const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
 
 
-export const flyoConfig = FlyoNitroConfiguration({
+export const flyoConfig = initNitro({
     accessToken: accessToken,
     lang: 'en',
     components: {

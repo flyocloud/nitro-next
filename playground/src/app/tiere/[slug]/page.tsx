@@ -1,4 +1,4 @@
-import { getEntitiesApi } from "@flyo/nitro-next/server";
+import { getNitroEntities } from "@flyo/nitro-next";
 import { notFound } from "next/navigation";
 
 export default async function Page({
@@ -11,7 +11,7 @@ export default async function Page({
     console.log('Slug:', slug);
 
 
-    const tier = await getEntitiesApi()
+    const tier = await getNitroEntities()
         .entityBySlug({ slug })
         .catch((error: unknown) => {
             console.error('Error fetching entity:', slug, error);
