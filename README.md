@@ -90,7 +90,40 @@ export default async function Page({ params }: { params: Promise<{ slug?: string
 }
 ```
 
-### 5. WYSIWYG Component
+### 5. Create Custom Components
+
+Create custom components for your Flyo blocks. Each component receives a `block` object containing the content from your CMS.
+
+#### Example: HeroBanner Component
+
+```tsx
+'use client';
+
+import { Block } from "@flyo/nitro-typescript";
+import { editable } from "@flyo/nitro-next/client";
+
+export function HeroBanner({ block }: { block: Block }) {
+  return (
+    <section {...editable(block)} className="bg-gray-200 p-8 rounded-lg text-center">
+      <h2 className="text-3xl font-bold mb-4">
+        {block?.content?.title}
+      </h2>
+      <p className="text-lg mb-6">
+        {block?.content?.teaser}
+      </p>
+      <img 
+        src={block?.content?.image?.source} 
+        alt={block?.content?.image?.caption} 
+        className="mx-auto mb-6" 
+      />
+    </section>
+  );
+}
+```
+
+The `editable()` helper function marks the component as editable in the Flyo CMS live editor. It spreads the necessary data attributes onto your component's root element to enable in-place editing.
+
+### 6. WYSIWYG Component
 
 The `FlyoWysiwyg` component renders ProseMirror/TipTap JSON content. It handles standard nodes automatically and allows you to provide custom components for specific node types.
 
@@ -161,6 +194,21 @@ export default function MyComponent({ block }) {
 ```
 
 The component will use your custom `CustomImage` component for all `image` nodes, and render all other nodes using the default WYSIWYG renderer.
+
+## API Reference
+
+### Client Exports
+
+- **`editable(block)`** - Helper function that returns props to make a block editable in the Flyo live editor
+- **`FlyoClientWrapper`** - Client-side wrapper component for live editing functionality
+- **`FlyoWysiwyg`** - Component for rendering ProseMirror/TipTap JSON content
+
+### Server Exports
+
+- **`initNitro(config)`** - Initialize Nitro with your configuration
+- **`getNitroConfig()`** - Get the current Nitro configuration
+- **`getNitroPages()`** - Get the Nitro pages API
+- **`NitroPage`** - Server component for rendering Nitro pages
 
 ## Development
 
