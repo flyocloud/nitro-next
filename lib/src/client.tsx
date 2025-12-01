@@ -1,8 +1,22 @@
 'use client';
 
 import { useEffect } from 'react';
-import { highlightAndClick } from '@flyo/nitro-js-bridge';
+import { highlightAndClick, wysiwyg } from '@flyo/nitro-js-bridge';
 import { Block } from "@flyo/nitro-typescript";
+
+/**
+ * Type for WYSIWYG node structure
+ */
+interface WysiwygNode {
+  type: string;
+  content?: WysiwygNode[];
+  [key: string]: unknown;
+}
+
+/**
+ * Type for WYSIWYG JSON that can be a node, array of nodes, or doc structure
+ */
+type WysiwygJson = WysiwygNode | WysiwygNode[] | { type: 'doc'; content: WysiwygNode[] };
 
 /**
  * Helper function to get editable props
@@ -67,4 +81,58 @@ export function FlyoClientWrapper({
   }, []);
 
   return <>{children}</>;
+}
+
+/**
+ * WYSIWYG component for rendering ProseMirror/TipTap JSON content
+ * 
+ * @example
+ * ```tsx
+ * import { FlyoWysiwyg } from '@flyo/nitro-next/client';
+ * import CustomImage from './CustomImage';
+ * 
+ * export default function MyComponent({ block }) {
+ *   return (
+ *     <FlyoWysiwyg 
+ *       json={block.content.json} 
+ *       components={{
+ *         image: CustomImage
+ *       }} 
+ *     />
+ *   );
+ * }
+ * ```
+ */
+export function FlyoWysiwyg({
+  json,
+  components = {},
+}: {
+  json: WysiwygJson;
+  components?: Record<string, React.ComponentType<{ node: WysiwygNode }>>;
+}) {
+  let nodes: WysiwygNode[] = [];
+
+  if (json) {
+    if (json.type === 'doc' && Array.isArray(json.content)) {
+      nodes = json.content;
+    } else if (Array.isArray(json)) {
+      nodes = json;
+    } else {
+      nodes = [json];
+    }
+  }
+
+  return (
+    <>
+      {nodes.map((node: WysiwygNode, index: number) => {
+        const Component = components[node.type];
+        if (Component) {
+          return <Component key={index} node={node} />;
+        }
+        
+        const html = wysiwyg(node);
+        return <div key={index} dangerouslySetInnerHTML={{ __html: html }} />;
+      })}
+    </>
+  );
 }

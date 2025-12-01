@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 import { initNitro } from '@flyo/nitro-next/server';
 import { FlyoClientWrapper } from '@flyo/nitro-next/client';
 import { HeroBanner } from './components/HeroBanner';
+import { Text } from './components/Text';
 
 // Get configuration from environment variables
 const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
@@ -19,7 +20,8 @@ export const flyoConfig = initNitro({
     accessToken: accessToken,
     lang: 'en',
     components: {
-        HeroBanner: HeroBanner
+        HeroBanner: HeroBanner,
+        Text: Text
     }
 });
 

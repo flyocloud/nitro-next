@@ -107,9 +107,8 @@ export function NitroBlock({
   }
 
   return (
-    <div>
-      {/* Render block content here */}
-      <pre>{JSON.stringify(block, null, 2)}</pre>
+    <div style={{ border: '1px solid #fff', padding: '1rem', marginBottom: '1rem', backgroundColor: 'red' }}>
+      Component <b>{block.component}</b> not found.
     </div>
   );
 }

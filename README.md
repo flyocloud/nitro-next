@@ -90,6 +90,78 @@ export default async function Page({ params }: { params: Promise<{ slug?: string
 }
 ```
 
+### 5. WYSIWYG Component
+
+The `FlyoWysiwyg` component renders ProseMirror/TipTap JSON content. It handles standard nodes automatically and allows you to provide custom components for specific node types.
+
+#### Basic Usage
+
+```tsx
+'use client';
+
+import { FlyoWysiwyg } from '@flyo/nitro-next/client';
+
+export default function MyComponent({ block }) {
+  return (
+    <FlyoWysiwyg json={block.content.json} />
+  );
+}
+```
+
+#### With Custom Components
+
+Create a custom component for specific node types:
+
+```tsx
+// components/CustomImage.tsx
+'use client';
+
+interface ImageNode {
+  node: {
+    attrs: {
+      src: string;
+      alt?: string;
+      title?: string;
+    };
+  };
+}
+
+export default function CustomImage({ node }: ImageNode) {
+  const { src, alt, title } = node.attrs;
+  
+  return (
+    <img 
+      src={src} 
+      alt={alt} 
+      title={title} 
+      style={{ maxWidth: '100%', height: 'auto' }} 
+    />
+  );
+}
+```
+
+Then use it with the WYSIWYG component:
+
+```tsx
+'use client';
+
+import { FlyoWysiwyg } from '@flyo/nitro-next/client';
+import CustomImage from './components/CustomImage';
+
+export default function MyComponent({ block }) {
+  return (
+    <FlyoWysiwyg 
+      json={block.content.json} 
+      components={{
+        image: CustomImage
+      }} 
+    />
+  );
+}
+```
+
+The component will use your custom `CustomImage` component for all `image` nodes, and render all other nodes using the default WYSIWYG renderer.
+
 ## Development
 
 This is a workspace-based project using npm workspaces.
