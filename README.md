@@ -13,18 +13,36 @@ npm install @flyo/nitro-next
 Create a `flyo.config.tsx` file to configure the library and your components.
 
 ```tsx
-import { initNitro } from '@flyo/nitro-next';
+import type { ReactNode } from 'react';
+import { initNitro } from '@flyo/nitro-next/server';
+import { FlyoClientWrapper } from '@flyo/nitro-next/client';
 import { HeroBanner } from './components/HeroBanner';
 
-const flyoConfig = initNitro({
-  accessToken: 'YOUR_ACCESS_TOKEN',
+// Get configuration from environment variables
+const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
+const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
+
+export const flyoConfig = initNitro({
+  accessToken: accessToken,
+  lang: 'en',
   components: {
     HeroBanner: HeroBanner
   }
 });
 
-export function FlyoProvider({ children }: { children: React.ReactNode }) {
+/**
+ * Pre-configured Flyo component
+ * 
+ * This component initializes the Flyo Nitro CMS with your configuration.
+ * Wrap your app with this component in your root layout.
+ */
+export function Flyo({ children }: { children: ReactNode }) {
   flyoConfig();
+
+  if (liveEdit) {
+    return <FlyoClientWrapper>{children}</FlyoClientWrapper>;
+  }
+
   return children;
 }
 ```
@@ -34,15 +52,15 @@ export function FlyoProvider({ children }: { children: React.ReactNode }) {
 Wrap your application with the provider in `app/layout.tsx`.
 
 ```tsx
-import { FlyoProvider } from '@/flyo.config';
+import { Flyo } from '@/flyo.config';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <FlyoProvider>
+    <Flyo>
       <html>
         <body>{children}</body>
       </html>
-    </FlyoProvider>
+    </Flyo>
   );
 }
 ```
@@ -52,7 +70,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 Create a catch-all route in `app/[[...slug]]/page.tsx` to handle dynamic pages.
 
 ```tsx
-import { NitroPage, getNitroConfig, getNitroPages } from "@flyo/nitro-next";
+import { NitroPage, getNitroConfig, getNitroPages } from "@flyo/nitro-next/server";
 import { notFound } from 'next/navigation';
 
 export default async function Page({ params }: { params: Promise<{ slug?: string[] }> }) {

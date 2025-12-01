@@ -1,12 +1,13 @@
 'use client';
 
 import { Block } from "@flyo/nitro-typescript";
+import { editable } from "@flyo/nitro-next/client";
 
 export function HeroBanner({block}: {block: Block}) {
 
 
     return (
-        <section className="bg-gray-200 p-8 rounded-lg text-center">
+        <section {...editable(block)} className="bg-gray-200 p-8 rounded-lg text-center">
             <h2 className="text-3xl font-bold mb-4">
                 { block?.content?.title }
             </h2>

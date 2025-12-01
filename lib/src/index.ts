@@ -1,4 +1,4 @@
-// Main provider component (server component that fetches config)
+// Server exports only - use @flyo/nitro-next/client for client components
 export {
   NitroBlock,
   NitroPage,
@@ -7,6 +7,3 @@ export {
   getNitroPages,
   getNitroEntities
 } from './server';
-
-// Client exports - import from '@flyo/nitro-next/client'
-// export { useConfig, FlyoClientProvider } from './client';

@@ -1,7 +1,7 @@
 import { Flyo } from "@/flyo.config";
 import type { ReactNode } from 'react';
 import { Header } from './header';
-import { getNitroConfig } from "@flyo/nitro-next";
+import { getNitroConfig } from "@flyo/nitro-next/server";
 
 export default async function RootLayout({
   children,

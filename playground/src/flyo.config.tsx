@@ -6,11 +6,13 @@
  */
 
 import type { ReactNode } from 'react';
-import { initNitro } from '@flyo/nitro-next';
+import { initNitro } from '@flyo/nitro-next/server';
+import { FlyoClientWrapper } from '@flyo/nitro-next/client';
 import { HeroBanner } from './components/HeroBanner';
 
 // Get configuration from environment variables
 const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
+const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
 
 
 export const flyoConfig = initNitro({
@@ -30,7 +32,11 @@ export const flyoConfig = initNitro({
 export function Flyo({ children }: { children: ReactNode }) {
 
     flyoConfig();
-    
+
+    if (liveEdit) {
+        return <FlyoClientWrapper>{children}</FlyoClientWrapper>;
+    }
+
     return children;
 }
 

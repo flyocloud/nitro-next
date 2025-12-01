@@ -1,4 +1,4 @@
-import { NitroPage, getNitroConfig, getNitroPages } from "@flyo/nitro-next";
+import { NitroPage, getNitroConfig, getNitroPages } from "@flyo/nitro-next/server";
 import { notFound } from 'next/navigation';
 
 export default async function Page({
