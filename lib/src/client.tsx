@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { highlightAndClick, wysiwyg } from '@flyo/nitro-js-bridge';
+import { highlightAndClick, wysiwyg, reload} from '@flyo/nitro-js-bridge';
 import { Block } from "@flyo/nitro-typescript";
 
 /**
@@ -40,6 +40,8 @@ export function FlyoClientWrapper({
     if (typeof window === 'undefined') {
       return;
     }
+
+    reload();
 
     const wireAll = () => {
       const elements = document.querySelectorAll('[data-flyo-uid]');
