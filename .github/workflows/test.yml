@@ -24,3 +24,6 @@ jobs:
 
     - name: Run tests
       run: npm test --workspace=@flyo/nitro-next
+
+    - name: Build
+      run: npm run build --workspace=@flyo/nitro-next

@@ -113,12 +113,12 @@ export function FlyoWysiwyg({
   let nodes: WysiwygNode[] = [];
 
   if (json) {
-    if (json.type === 'doc' && Array.isArray(json.content)) {
-      nodes = json.content;
-    } else if (Array.isArray(json)) {
+    if (Array.isArray(json)) {
       nodes = json;
+    } else if ('type' in json && json.type === 'doc' && Array.isArray(json.content)) {
+      nodes = json.content;
     } else {
-      nodes = [json];
+      nodes = [json as WysiwygNode];
     }
   }
 
