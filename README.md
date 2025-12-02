@@ -1,4 +1,4 @@
-# Flyo Nitro Next
+# Flyo Nitro for Next.Js
 
 ## Usage
 
@@ -25,6 +25,7 @@ const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
 export const flyoConfig = initNitro({
   accessToken: accessToken,
   lang: 'en',
+  // see the custom components section 5. for more info
   components: {
     HeroBanner: HeroBanner
   }
@@ -94,8 +95,6 @@ export default async function Page({ params }: { params: Promise<{ slug?: string
 
 Create custom components for your Flyo blocks. Each component receives a `block` object containing the content from your CMS.
 
-#### Example: HeroBanner Component
-
 ```tsx
 'use client';
 
@@ -127,8 +126,6 @@ The `editable()` helper function marks the component as editable in the Flyo CMS
 
 The `FlyoWysiwyg` component renders ProseMirror/TipTap JSON content. It handles standard nodes automatically and allows you to provide custom components for specific node types.
 
-#### Basic Usage
-
 ```tsx
 'use client';
 
@@ -140,8 +137,6 @@ export default function MyComponent({ block }) {
   );
 }
 ```
-
-#### With Custom Components
 
 Create a custom component for specific node types:
 
@@ -199,16 +194,45 @@ The component will use your custom `CustomImage` component for all `image` nodes
 
 ### Client Exports
 
-- **`editable(block)`** - Helper function that returns props to make a block editable in the Flyo live editor
-- **`FlyoClientWrapper`** - Client-side wrapper component for live editing functionality
-- **`FlyoWysiwyg`** - Component for rendering ProseMirror/TipTap JSON content
+- **`editable(block)`** – Returns the `data-flyo-uid` attributes to wire blocks into the Flyo live editor.
+  ```tsx
+  import { editable } from '@flyo/nitro-next/client';
+  ```
+- **`FlyoClientWrapper`** – Internal wrapper that mounts the Nitro bridge, watches for new editable nodes, and wires the click/highlight handlers.
+  ```tsx
+  import { FlyoClientWrapper } from '@flyo/nitro-next/client';
+  ```
+- **`FlyoWysiwyg`** – Renders Flyo ProseMirror/TipTap JSON with optional overrides for individual node types.
+  ```tsx
+  import { FlyoWysiwyg } from '@flyo/nitro-next/client';
+  ```
 
 ### Server Exports
 
-- **`initNitro(config)`** - Initialize Nitro with your configuration
-- **`getNitroConfig()`** - Get the current Nitro configuration
-- **`getNitroPages()`** - Get the Nitro pages API
-- **`NitroPage`** - Server component for rendering Nitro pages
+- **`initNitro(config)`** – Create and cache the Flyo configuration the rest of the helpers rely on.
+  ```ts
+  import { initNitro } from '@flyo/nitro-next/server';
+  ```
+- **`getNitroConfig()`** – Fetches and caches the Nitro configuration/metadata that describes the available pages.
+  ```ts
+  import { getNitroConfig } from '@flyo/nitro-next/server';
+  ```
+- **`getNitroPages()`** – Factory for the pages API that lets you fetch Nitro page data (used by `NitroPage`).
+  ```ts
+  import { getNitroPages } from '@flyo/nitro-next/server';
+  ```
+- **`getNitroEntities()`** – Factory for Nitro entities API (available via the Flyo Typescript SDK).
+  ```ts
+  import { getNitroEntities } from '@flyo/nitro-next/server';
+  ```
+- **`NitroPage`** – Server component that renders a whole Nitro page by delegating to `NitroBlock` for each block.
+  ```tsx
+  import { NitroPage } from '@flyo/nitro-next/server';
+  ```
+- **`NitroBlock`** – Low-level renderer that looks up and renders the registered component for a block, or shows a placeholder if missing.
+  ```tsx
+  import { NitroBlock } from '@flyo/nitro-next/server';
+  ```
 
 ## Development
 
