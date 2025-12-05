@@ -5,5 +5,9 @@ export {
   initNitro,
   getNitroConfig,
   getNitroPages,
-  getNitroEntities
+  getNitroEntities,
+  // New route helpers for Next.js app router
+  nitroPageRoute,
+  nitroGenerateMetadata,
+  nitroGenerateStaticParams,
 } from './server';

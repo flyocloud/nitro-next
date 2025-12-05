@@ -7,18 +7,46 @@ import {
   NitroPage,
   NitroBlock,
   getNitroPages,
-  getNitroEntities
+  getNitroEntities,
+  nitroPageRoute,
+  nitroGenerateMetadata,
+  nitroGenerateStaticParams
 } from './server';
-import { PagesApi, EntitiesApi, Configuration, Page, Block } from '@flyo/nitro-typescript';
+import { EntitiesApi, Configuration, Page, Block } from '@flyo/nitro-typescript';
+
+// Mock next/navigation
+jest.mock('next/navigation', () => ({
+  notFound: jest.fn(() => {
+    throw new Error('Not Found');
+  }),
+}));
 
 // Mock @flyo/nitro-typescript
 jest.mock('@flyo/nitro-typescript', () => {
   return {
     Configuration: jest.fn(),
     ConfigApi: jest.fn().mockImplementation(() => ({
-      config: jest.fn().mockResolvedValue({ title: 'Mock Config' }),
+      config: jest.fn().mockResolvedValue({ 
+        title: 'Mock Config',
+        pages: ['', 'about', 'blog/post-1']
+      }),
     })),
-    PagesApi: jest.fn(),
+    PagesApi: jest.fn().mockImplementation(() => ({
+      page: jest.fn().mockImplementation(({ slug }: { slug: string }) => {
+        if (slug === 'about') {
+          return Promise.resolve({
+            title: 'About Page',
+            meta_json: {
+              title: 'About Us',
+              description: 'Learn about us',
+              image: 'https://example.com/about.jpg'
+            },
+            json: []
+          });
+        }
+        return Promise.reject(new Error('Page not found'));
+      })
+    })),
     EntitiesApi: jest.fn(),
   };
 });
@@ -35,7 +63,10 @@ describe('getNitroConfig', () => {
 
   it('returns config', async () => {
     const config = await getNitroConfig();
-    expect(config).toEqual({ title: 'Mock Config' });
+    expect(config).toEqual({ 
+      title: 'Mock Config',
+      pages: ['', 'about', 'blog/post-1']
+    });
   });
 });
 
@@ -98,11 +129,69 @@ describe('NitroBlock', () => {
 describe('Hooks', () => {
     it('getNitroPages returns PagesApi instance', () => {
         const api = getNitroPages();
-        expect(api).toBeInstanceOf(PagesApi);
+        expect(api).toBeDefined();
+        expect(typeof api.page).toBe('function');
     });
 
     it('getNitroEntities returns EntitiesApi instance', () => {
         const api = getNitroEntities();
         expect(api).toBeInstanceOf(EntitiesApi);
     });
+});
+
+describe('Route Helpers', () => {
+  beforeEach(() => {
+    initNitro({ 
+      accessToken: 'test-token'
+    });
+  });
+
+  describe('nitroGenerateStaticParams', () => {
+    it('generates static params from config pages', async () => {
+      const params = await nitroGenerateStaticParams();
+      
+      expect(params).toEqual([
+        { slug: undefined }, // homepage
+        { slug: ['about'] },
+        { slug: ['blog', 'post-1'] }
+      ]);
+    });
+  });
+
+  describe('nitroGenerateMetadata', () => {
+    it('generates metadata from page data', async () => {
+      const metadata = await nitroGenerateMetadata({
+        params: Promise.resolve({ slug: ['about'] })
+      });
+
+      expect(metadata.title).toBe('About Us');
+      expect(metadata.description).toBe('Learn about us');
+    });
+
+    it('throws not found for invalid page', async () => {
+      await expect(
+        nitroGenerateMetadata({
+          params: Promise.resolve({ slug: ['invalid'] })
+        })
+      ).rejects.toThrow('Not Found');
+    });
+  });
+
+  describe('nitroPageRoute', () => {
+    it('renders page component', async () => {
+      const result = await nitroPageRoute({
+        params: Promise.resolve({ slug: ['about'] })
+      });
+
+      expect(result).toBeDefined();
+    });
+
+    it('throws not found for invalid page', async () => {
+      await expect(
+        nitroPageRoute({
+          params: Promise.resolve({ slug: ['invalid'] })
+        })
+      ).rejects.toThrow('Not Found');
+    });
+  });
 });

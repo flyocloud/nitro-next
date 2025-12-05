@@ -77,24 +77,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 Create a catch-all route in `app/[[...slug]]/page.tsx` to handle dynamic pages.
 
 ```tsx
-import { NitroPage, getNitroConfig, getNitroPages } from "@flyo/nitro-next/server";
-import { notFound } from 'next/navigation';
-
-export default async function Page({ params }: { params: Promise<{ slug?: string[] }> }) {
-  const { slug } = await params;
-  const path = slug?.join('/') ?? '';
-
-  // Check if page exists in config
-  const cfg = await getNitroConfig();
-  if (!cfg.pages?.includes(path)) {
-    notFound();
-  }
-
-  // Fetch page data
-  const page = await getNitroPages().page({ slug: path });
-
-  return <NitroPage page={page} />;
-}
+// Re-export the Nitro route handlers for a one-liner setup
+export {
+  nitroPageRoute as default,
+  nitroGenerateMetadata as generateMetadata,
+  nitroGenerateStaticParams as generateStaticParams,
+} from "@flyo/nitro-next/server";
 ```
 
 ### 5. Create Custom Components
