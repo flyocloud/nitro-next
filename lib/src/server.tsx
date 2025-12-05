@@ -14,8 +14,9 @@ let configPromise: Promise<ConfigResponse> | null = null;
 let globalLang: string | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let globalComponents: Record<string, any> = {};
+let globalShowMissingComponentAlert: boolean = false;
 
-export const initNitro = ({accessToken, lang, components}: {accessToken: string, lang?: string, components?: object}): ( () => Configuration )   => {
+export const initNitro = ({accessToken, lang, components, showMissingComponentAlert}: {accessToken: string, lang?: string, components?: object, showMissingComponentAlert?: boolean}): ( () => Configuration )   => {
 
     if (!globalConfiguration) {
       globalConfiguration = new Configuration({
@@ -25,6 +26,7 @@ export const initNitro = ({accessToken, lang, components}: {accessToken: string,
 
     globalLang = lang ?? null;
     globalComponents = components ?? {};
+    globalShowMissingComponentAlert = showMissingComponentAlert ?? false;
 
     return () => globalConfiguration!;
 }
@@ -106,9 +108,13 @@ export function NitroBlock({
     return <Component block={block} />;
   }
 
-  return (
-    <div style={{ border: '1px solid #fff', padding: '1rem', marginBottom: '1rem', backgroundColor: 'red' }}>
-      Component <b>{block.component}</b> not found.
-    </div>
-  );
+  if (globalShowMissingComponentAlert) {
+    return (
+      <div style={{ border: '1px solid #fff', padding: '1rem', marginBottom: '1rem', backgroundColor: 'red' }}>
+        Component <b>{block.component}</b> not found.
+      </div>
+    );
+  }
+
+  return null;
 }

@@ -69,6 +69,11 @@ describe('NitroPage', () => {
 
 describe('NitroBlock', () => {
   it('renders fallback if component not found', () => {
+
+     initNitro({ 
+        showMissingComponentAlert: true,
+    });
+
     const block = { uid: '1', component: 'Unknown', content: 'Hidden' } as unknown as Block;
     render(<NitroBlock block={block} />);
     // The fallback renders JSON

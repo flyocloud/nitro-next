@@ -19,6 +19,7 @@ const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
 export const flyoConfig = initNitro({
     accessToken: accessToken,
     lang: 'en',
+    showMissingComponentAlert: liveEdit,
     components: {
         HeroBanner: HeroBanner,
         Text: Text
