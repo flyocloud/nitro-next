@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import {
   Page,
   Block,
@@ -9,8 +10,6 @@ import {
 } from '@flyo/nitro-typescript';
 
 let globalConfiguration: Configuration | null = null;
-let configResponse: ConfigResponse | null = null;
-let configPromise: Promise<ConfigResponse> | null = null;
 let globalLang: string | null = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let globalComponents: Record<string, any> = {};
@@ -31,34 +30,15 @@ export const initNitro = ({accessToken, lang, components, showMissingComponentAl
     return () => globalConfiguration!;
 }
 
-export async function getNitroConfig(): Promise<ConfigResponse> {
-
-    console.log('\n[getNitroConfig] call');
-
-    if (configResponse) {
-      return configResponse;
-    }
-
-    if (configPromise) {
-      return configPromise;
-    }
+export const getNitroConfig = cache(async (): Promise<ConfigResponse> => {
 
     const configApi = new ConfigApi(globalConfiguration!);
     const useLang = globalLang ?? undefined;
 
-    configPromise = configApi
-      .config({ lang: useLang })
-      .then((config) => {
-        configResponse = config;
-        return config;
-      })
-      .finally(() => {
-        configPromise = null;
-        console.log('\n[getNitroConfig] fetched config');
-      });
-
-    return configPromise;
-}
+    const config = await configApi.config({ lang: useLang });
+    
+    return config;
+});
 
 export function getNitroPages(): PagesApi {
   return new PagesApi(globalConfiguration!);

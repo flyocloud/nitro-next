@@ -14,5 +14,14 @@
   },
   "rules": {
     "react/react-in-jsx-scope": "off"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["**/*.test.ts", "**/*.test.tsx", "jest.setup.js", "jest.config.js"],
+      "env": {
+        "jest": true,
+        "node": true
+      }
+    }
+  ]
 }
