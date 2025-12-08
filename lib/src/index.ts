@@ -6,8 +6,16 @@ export {
   getNitroConfig,
   getNitroPages,
   getNitroEntities,
-  // New route helpers for Next.js app router
+  // Route helpers for Next.js app router - Pages
   nitroPageRoute,
   nitroGenerateMetadata,
   nitroGenerateStaticParams,
+  // Route helpers for Next.js app router - Entities
+  nitroEntityRoute,
+  nitroEntityGenerateMetadata,
+  // Types
+  type EntityResolver,
 } from './server';
+
+// Re-export types from Flyo SDK for convenience
+export type { Entity, Block, Page } from '@flyo/nitro-typescript';

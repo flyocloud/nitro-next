@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import {
   Page,
   Block,
+  Entity,
   ConfigApi,
   ConfigResponse,
   Configuration,
@@ -58,6 +59,15 @@ type RouteParams = {
 };
 
 /**
+ * Generic route params type for entity routes
+ * Allows any param structure from Next.js app router
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type EntityRouteParams<T = any> = {
+  params: Promise<T>;
+};
+
+/**
  * Internal helper to resolve Nitro page from route params
  * Uses React cache to avoid duplicate fetching
  */
@@ -84,6 +94,31 @@ const resolveNitroRoute = cache(async ({ params }: RouteParams) => {
 
   return { page, path, cfg };
 });
+
+/**
+ * Entity resolver function type
+ * Users provide this to resolve entities from their route params
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type EntityResolver<T = any> = (params: Promise<T>) => Promise<Entity>;
+
+/**
+ * Internal helper to wrap and cache entity resolvers
+ * Ensures the resolver is only called once per unique params
+ */
+function createCachedEntityResolver<T>(
+  resolver: EntityResolver<T>
+): (props: EntityRouteParams<T>) => Promise<Entity> {
+  return cache(async ({ params }: EntityRouteParams<T>) => {
+    const entity = await resolver(params);
+    
+    if (!entity) {
+      notFound();
+    }
+    
+    return entity;
+  });
+}
 
 
 /**
@@ -197,4 +232,100 @@ export async function nitroGenerateStaticParams() {
   return pages.map((path: string) => ({
     slug: path === '' ? undefined : path.split('/'),
   }));
+}
+
+/**
+ * Default entity route handler with custom resolver
+ * Flexible solution that works with any route param structure
+ * 
+ * @example
+ * ```ts
+ * // app/blog/[slug]/page.tsx
+ * const resolver = async (params: Promise<{ slug: string }>) => {
+ *   const { slug } = await params;
+ *   return getNitroEntities().entityBySlug({ slug, typeId: 123 });
+ * };
+ * 
+ * export default (props) => nitroEntityRoute(props, {
+ *   resolver,
+ *   render: (entity) => <h1>{entity.entity?.entity_title}</h1>
+ * });
+ * ```
+ * 
+ * @example
+ * ```ts
+ * // app/items/[uniqueid]/page.tsx
+ * const resolver = async (params: Promise<{ uniqueid: string }>) => {
+ *   const { uniqueid } = await params;
+ *   return getNitroEntities().entityByUniqueid({ uniqueid });
+ * };
+ * 
+ * export default (props) => nitroEntityRoute(props, { resolver });
+ * ```
+ * 
+ * @example
+ * ```ts
+ * // app/custom/[whatever]/page.tsx
+ * const resolver = async (params: Promise<{ whatever: string }>) => {
+ *   const { whatever } = await params;
+ *   return getNitroEntities().entityBySlug({ slug: whatever });
+ * };
+ * 
+ * export default (props) => nitroEntityRoute(props, { resolver });
+ * ```
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function nitroEntityRoute<T = any>(
+  props: EntityRouteParams<T>,
+  options: {
+    resolver: EntityResolver<T>;
+    render?: (entity: Entity) => React.ReactNode;
+  }
+) {
+  const cachedResolver = createCachedEntityResolver(options.resolver);
+  
+  return (async () => {
+    const entity = await cachedResolver(props);
+    
+    if (options.render) {
+      return options.render(entity);
+    }
+
+    // Default simple render - users should provide their own render function
+    return <div>{entity.entity?.entity_title}</div>;
+  })();
+}
+
+/**
+ * Generate metadata for Nitro entities with custom resolver
+ * Works with any route param structure
+ * 
+ * @example
+ * ```ts
+ * // app/blog/[slug]/page.tsx
+ * const resolver = async (params: Promise<{ slug: string }>) => {
+ *   const { slug } = await params;
+ *   return getNitroEntities().entityBySlug({ slug, typeId: 123 });
+ * };
+ * 
+ * export const generateMetadata = (props) => nitroEntityGenerateMetadata(props, { resolver });
+ * ```
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function nitroEntityGenerateMetadata<T = any>(
+  props: EntityRouteParams<T>,
+  options: {
+    resolver: EntityResolver<T>;
+  }
+): Promise<Metadata> {
+  const cachedResolver = createCachedEntityResolver(options.resolver);
+  const entity = await cachedResolver(props);
+
+  const title = entity.entity?.entity_title ?? 'Entity';
+  const description = entity.entity?.entity_teaser ?? '';
+
+  return {
+    title,
+    description,
+  };
 }

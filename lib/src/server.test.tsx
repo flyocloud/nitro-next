@@ -10,9 +10,11 @@ import {
   getNitroEntities,
   nitroPageRoute,
   nitroGenerateMetadata,
-  nitroGenerateStaticParams
+  nitroGenerateStaticParams,
+  nitroEntityRoute,
+  nitroEntityGenerateMetadata
 } from './server';
-import { EntitiesApi, Configuration, Page, Block } from '@flyo/nitro-typescript';
+import { Configuration, Page, Block, Entity } from '@flyo/nitro-typescript';
 
 // Mock next/navigation
 jest.mock('next/navigation', () => ({
@@ -47,7 +49,30 @@ jest.mock('@flyo/nitro-typescript', () => {
         return Promise.reject(new Error('Page not found'));
       })
     })),
-    EntitiesApi: jest.fn(),
+    EntitiesApi: jest.fn().mockImplementation(() => ({
+      entityBySlug: jest.fn().mockImplementation(({ slug, typeId }: { slug: string; typeId?: number }) => {
+        if (slug === 'test-entity' && typeId === 123) {
+          return Promise.resolve({
+            entity: {
+              entity_title: 'Test Entity',
+              entity_teaser: 'Test entity description'
+            }
+          });
+        }
+        return Promise.reject(new Error('Entity not found'));
+      }),
+      entityByUniqueid: jest.fn().mockImplementation(({ uniqueid }: { uniqueid: string }) => {
+        if (uniqueid === 'unique-123') {
+          return Promise.resolve({
+            entity: {
+              entity_title: 'Unique Entity',
+              entity_teaser: 'Unique entity description'
+            }
+          });
+        }
+        return Promise.reject(new Error('Entity not found'));
+      })
+    })),
   };
 });
 
@@ -135,7 +160,9 @@ describe('Hooks', () => {
 
     it('getNitroEntities returns EntitiesApi instance', () => {
         const api = getNitroEntities();
-        expect(api).toBeInstanceOf(EntitiesApi);
+        expect(api).toBeDefined();
+        expect(typeof api.entityBySlug).toBe('function');
+        expect(typeof api.entityByUniqueid).toBe('function');
     });
 });
 
@@ -192,6 +219,138 @@ describe('Route Helpers', () => {
           params: Promise.resolve({ slug: ['invalid'] })
         })
       ).rejects.toThrow('Not Found');
+    });
+  });
+});
+
+describe('Entity Route Helpers', () => {
+  beforeEach(() => {
+    initNitro({ 
+      accessToken: 'test-token'
+    });
+  });
+
+  describe('nitroEntityRoute', () => {
+    it('renders entity with custom resolver by slug', async () => {
+      const resolver = async (params: Promise<{ slug: string }>) => {
+        const { slug } = await params;
+        return getNitroEntities().entityBySlug({ slug, typeId: 123 });
+      };
+
+      const result = await nitroEntityRoute(
+        { params: Promise.resolve({ slug: 'test-entity' }) },
+        { 
+          resolver,
+          render: (entity: Entity) => <div>{entity.entity?.entity_title}</div>
+        }
+      );
+
+      expect(result).toBeDefined();
+    });
+
+    it('renders entity with custom resolver by uniqueid', async () => {
+      const resolver = async (params: Promise<{ uniqueid: string }>) => {
+        const { uniqueid } = await params;
+        return getNitroEntities().entityByUniqueid({ uniqueid });
+      };
+
+      const result = await nitroEntityRoute(
+        { params: Promise.resolve({ uniqueid: 'unique-123' }) },
+        { 
+          resolver,
+          render: (entity: Entity) => <div>{entity.entity?.entity_title}</div>
+        }
+      );
+
+      expect(result).toBeDefined();
+    });
+
+    it('uses default render when no render function provided', async () => {
+      const resolver = async (params: Promise<{ slug: string }>) => {
+        const { slug } = await params;
+        return getNitroEntities().entityBySlug({ slug, typeId: 123 });
+      };
+
+      const result = await nitroEntityRoute(
+        { params: Promise.resolve({ slug: 'test-entity' }) },
+        { resolver }
+      );
+
+      expect(result).toBeDefined();
+    });
+
+    it('throws not found for invalid entity', async () => {
+      const resolver = async (params: Promise<{ slug: string }>) => {
+        const { slug } = await params;
+        return getNitroEntities().entityBySlug({ slug, typeId: 123 });
+      };
+
+      await expect(
+        nitroEntityRoute(
+          { params: Promise.resolve({ slug: 'invalid-entity' }) },
+          { resolver }
+        )
+      ).rejects.toThrow('Entity not found');
+    });
+  });
+
+  describe('nitroEntityGenerateMetadata', () => {
+    it('generates metadata from entity by slug', async () => {
+      const resolver = async (params: Promise<{ slug: string }>) => {
+        const { slug } = await params;
+        return getNitroEntities().entityBySlug({ slug, typeId: 123 });
+      };
+
+      const metadata = await nitroEntityGenerateMetadata(
+        { params: Promise.resolve({ slug: 'test-entity' }) },
+        { resolver }
+      );
+
+      expect(metadata.title).toBe('Test Entity');
+      expect(metadata.description).toBe('Test entity description');
+    });
+
+    it('generates metadata from entity by uniqueid', async () => {
+      const resolver = async (params: Promise<{ uniqueid: string }>) => {
+        const { uniqueid } = await params;
+        return getNitroEntities().entityByUniqueid({ uniqueid });
+      };
+
+      const metadata = await nitroEntityGenerateMetadata(
+        { params: Promise.resolve({ uniqueid: 'unique-123' }) },
+        { resolver }
+      );
+
+      expect(metadata.title).toBe('Unique Entity');
+      expect(metadata.description).toBe('Unique entity description');
+    });
+
+    it('uses default title and description for missing entity data', async () => {
+      const resolver = async () => {
+        return Promise.resolve({ entity: {} } as Entity);
+      };
+
+      const metadata = await nitroEntityGenerateMetadata(
+        { params: Promise.resolve({ slug: 'test' }) },
+        { resolver }
+      );
+
+      expect(metadata.title).toBe('Entity');
+      expect(metadata.description).toBe('');
+    });
+
+    it('throws not found for invalid entity', async () => {
+      const resolver = async (params: Promise<{ slug: string }>) => {
+        const { slug } = await params;
+        return getNitroEntities().entityBySlug({ slug, typeId: 123 });
+      };
+
+      await expect(
+        nitroEntityGenerateMetadata(
+          { params: Promise.resolve({ slug: 'invalid-entity' }) },
+          { resolver }
+        )
+      ).rejects.toThrow('Entity not found');
     });
   });
 });

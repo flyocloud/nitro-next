@@ -1,24 +1,36 @@
-import { getNitroEntities } from "@flyo/nitro-next/server";
-import { notFound } from "next/navigation";
+import { 
+    nitroEntityRoute, 
+    nitroEntityGenerateMetadata, 
+    getNitroEntities,
+    type Entity,
+    type EntityResolver
+} from "@flyo/nitro-next/server";
 
-export default async function Page({
-  params,
-}: {
-  params: Promise<{ slug: string }>
-}) {
+type RouteParams = {
+    params: Promise<{ slug: string }>;
+};
+
+// Define the resolver - how to get the entity from route params
+const resolver: EntityResolver<{ slug: string }> = async (params) => {
     const { slug } = await params;
+    return getNitroEntities().entityBySlug({ 
+        slug, 
+        typeId: 172 
+    });
+};
 
-    console.log('Slug:', slug);
+export const generateMetadata = (props: RouteParams) => 
+    nitroEntityGenerateMetadata(props, { resolver });
 
-
-    const tier = await getNitroEntities()
-        .entityBySlug({ slug })
-        .catch((error: unknown) => {
-            console.error('Error fetching entity:', slug, error);
-            notFound(); // typed as never, so execution stops here
-        });
-
-    console.log(tier)
-
-    return (<div>hihi</div>)
+export default function Page(props: RouteParams) {
+    return nitroEntityRoute(props, {
+        resolver,
+        render: (entity: Entity) => (
+            <div>
+                <h1>{entity.entity?.entity_title}</h1>
+                <p>{entity.entity?.entity_teaser}</p>
+                <pre>{JSON.stringify(entity, null, 2)}</pre>
+            </div>
+        )
+    });
 }

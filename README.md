@@ -184,6 +184,144 @@ export default function MyComponent({ block }) {
 
 The component will use your custom `CustomImage` component for all `image` nodes, and render all other nodes using the default WYSIWYG renderer.
 
+### 7. Entity Detail Pages
+
+Nitro provides flexible helpers for creating entity detail pages with any route structure. You define a **resolver function** that fetches the entity from your route params, and the library handles caching and rendering.
+
+#### Example 1: Entity by Slug
+
+Create `app/blog/[slug]/page.tsx`:
+
+```tsx
+import { 
+  nitroEntityRoute, 
+  nitroEntityGenerateMetadata, 
+  getNitroEntities,
+  type Entity,
+  type EntityResolver
+} from "@flyo/nitro-next/server";
+
+type RouteParams = {
+  params: Promise<{ slug: string }>;
+};
+
+// Define how to resolve the entity from route params
+const resolver: EntityResolver<{ slug: string }> = async (params) => {
+  const { slug } = await params;
+  return getNitroEntities().entityBySlug({ 
+    slug, 
+    typeId: 123 // Your entity type ID from Flyo
+  });
+};
+
+// Generate metadata for SEO
+export const generateMetadata = (props: RouteParams) => 
+  nitroEntityGenerateMetadata(props, { resolver });
+
+// Render the page
+export default function BlogPost(props: RouteParams) {
+  return nitroEntityRoute(props, {
+    resolver,
+    render: (entity: Entity) => (
+      <article>
+        <h1>{entity.entity?.entity_title}</h1>
+        <p>{entity.entity?.entity_teaser}</p>
+        {/* Access all entity data here */}
+      </article>
+    )
+  });
+}
+```
+
+#### Example 2: Entity by Unique ID
+
+Create `app/items/[uniqueid]/page.tsx`:
+
+```tsx
+import { 
+  nitroEntityRoute, 
+  nitroEntityGenerateMetadata, 
+  getNitroEntities,
+  type Entity,
+  type EntityResolver
+} from "@flyo/nitro-next/server";
+
+type RouteParams = {
+  params: Promise<{ uniqueid: string }>;
+};
+
+const resolver: EntityResolver<{ uniqueid: string }> = async (params) => {
+  const { uniqueid } = await params;
+  return getNitroEntities().entityByUniqueid({ uniqueid });
+};
+
+export const generateMetadata = (props: RouteParams) => 
+  nitroEntityGenerateMetadata(props, { resolver });
+
+export default function Item(props: RouteParams) {
+  return nitroEntityRoute(props, {
+    resolver,
+    render: (entity: Entity) => (
+      <div>
+        <h1>{entity.entity?.entity_title}</h1>
+      </div>
+    )
+  });
+}
+```
+
+#### Example 3: Custom Route Parameter Name
+
+Works with any route parameter name - create `app/products/[id]/page.tsx`:
+
+```tsx
+import { 
+  nitroEntityRoute, 
+  nitroEntityGenerateMetadata, 
+  getNitroEntities,
+  type Entity,
+  type EntityResolver
+} from "@flyo/nitro-next/server";
+
+type RouteParams = {
+  params: Promise<{ id: string }>;
+};
+
+const resolver: EntityResolver<{ id: string }> = async (params) => {
+  const { id } = await params;
+  // Use the id parameter however you need
+  return getNitroEntities().entityBySlug({ 
+    slug: id,
+    typeId: 456
+  });
+};
+
+export const generateMetadata = (props: RouteParams) => 
+  nitroEntityGenerateMetadata(props, { resolver });
+
+export default function Product(props: RouteParams) {
+  return nitroEntityRoute(props, {
+    resolver,
+    render: (entity: Entity) => (
+      <div>
+        <h1>{entity.entity?.entity_title}</h1>
+        <p>{entity.entity?.entity_teaser}</p>
+      </div>
+    )
+  });
+}
+```
+
+#### How it Works
+
+1. **Type-safe params**: Define your route params type to match your Next.js route structure
+2. **Custom resolver**: Write a function that takes the params and returns an entity
+3. **Automatic caching**: The resolver is automatically wrapped with React cache - it's called once per unique params
+4. **Shared resolution**: Both `nitroEntityRoute` and `nitroEntityGenerateMetadata` use the same cached result
+5. **Flexible rendering**: Provide a custom render function or use the default simple renderer
+
+This pattern works with any route structure: `[slug]`, `[id]`, `[uniqueid]`, `[whatever]` - you control the resolution logic!
+
 ## API Reference
 
 ### Client Exports
@@ -218,6 +356,14 @@ The component will use your custom `CustomImage` component for all `image` nodes
 - **`getNitroEntities()`** – Factory for Nitro entities API (available via the Flyo Typescript SDK).
   ```ts
   import { getNitroEntities } from '@flyo/nitro-next/server';
+  ```
+- **`nitroEntityRoute(props, options)`** – Flexible entity detail page handler that works with any route param structure. Takes a custom resolver function.
+  ```tsx
+  import { nitroEntityRoute } from '@flyo/nitro-next/server';
+  ```
+- **`nitroEntityGenerateMetadata(props, options)`** – Generate metadata for entity detail pages using a custom resolver function.
+  ```tsx
+  import { nitroEntityGenerateMetadata } from '@flyo/nitro-next/server';
   ```
 - **`NitroPage`** – Server component that renders a whole Nitro page by delegating to `NitroBlock` for each block.
   ```tsx
