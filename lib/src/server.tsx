@@ -207,10 +207,23 @@ export async function nitroGenerateMetadata(
   
   const title = meta?.title ?? page.title ?? 'Page';
   const description = meta?.description ?? '';
+  const image = meta?.image ?? '';
 
   return {
     title,
     description,
+    openGraph: {
+      title,
+      description,
+      images: image ? [image] : [],
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: image ? [image] : [],
+    },
   };
 }
 
@@ -323,9 +336,22 @@ export async function nitroEntityGenerateMetadata<T = any>(
 
   const title = entity.entity?.entity_title ?? 'Entity';
   const description = entity.entity?.entity_teaser ?? '';
+  const image = entity.entity?.entity_image ?? '';
 
   return {
     title,
     description,
+    openGraph: {
+      title,
+      description,
+      images: image ? [image] : [],
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: image ? [image] : [],
+    },
   };
 }
