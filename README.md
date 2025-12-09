@@ -224,11 +224,14 @@ export default function BlogPost(props: RouteParams) {
   return nitroEntityRoute(props, {
     resolver,
     render: (entity: Entity) => (
-      <article>
-        <h1>{entity.entity?.entity_title}</h1>
-        <p>{entity.entity?.entity_teaser}</p>
-        {/* Access all entity data here */}
-      </article>
+
+      return (
+          <article>
+            <h1>{entity.entity?.entity_title}</h1>
+            <p>{entity.entity?.entity_teaser}</p>
+            {/* Access all entity data here */}
+          </article>
+      );
     )
   });
 }
@@ -263,9 +266,12 @@ export default function Item(props: RouteParams) {
   return nitroEntityRoute(props, {
     resolver,
     render: (entity: Entity) => (
-      <div>
-        <h1>{entity.entity?.entity_title}</h1>
-      </div>
+
+      return (
+        <div>
+          <h1>{entity.entity?.entity_title}</h1>
+        </div>
+      )
     )
   });
 }
@@ -304,10 +310,13 @@ export default function Product(props: RouteParams) {
   return nitroEntityRoute(props, {
     resolver,
     render: (entity: Entity) => (
-      <div>
-        <h1>{entity.entity?.entity_title}</h1>
-        <p>{entity.entity?.entity_teaser}</p>
-      </div>
+
+      return (
+        <div>
+          <h1>{entity.entity?.entity_title}</h1>
+          <p>{entity.entity?.entity_teaser}</p>
+        </div>
+      )
     )
   });
 }
