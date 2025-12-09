@@ -194,10 +194,10 @@ export async function nitroPageRoute(props: RouteParams) {
  * @example
  * ```ts
  * // app/[[...slug]]/page.tsx
- * export { nitroGenerateMetadata as generateMetadata } from '@flyo/nitro-next/server';
+ * export { nitroPageGenerateMetadata as generateMetadata } from '@flyo/nitro-next/server';
  * ```
  */
-export async function nitroGenerateMetadata(
+export async function nitroPageGenerateMetadata(
   props: RouteParams
 ): Promise<Metadata> {
   const { page } = await resolveNitroRoute(props);
@@ -235,10 +235,10 @@ export async function nitroGenerateMetadata(
  * @example
  * ```ts
  * // app/[[...slug]]/page.tsx
- * export { nitroGenerateStaticParams as generateStaticParams } from '@flyo/nitro-next/server';
+ * export { nitroPageGenerateStaticParams as generateStaticParams } from '@flyo/nitro-next/server';
  * ```
  */
-export async function nitroGenerateStaticParams() {
+export async function nitroPageGenerateStaticParams() {
   const cfg = await getNitroConfig();
   const pages = cfg.pages ?? [];
 

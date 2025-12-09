@@ -8,8 +8,8 @@ export {
   getNitroEntities,
   // Route helpers for Next.js app router - Pages
   nitroPageRoute,
-  nitroGenerateMetadata,
-  nitroGenerateStaticParams,
+  nitroPageGenerateMetadata,
+  nitroPageGenerateStaticParams,
   // Route helpers for Next.js app router - Entities
   nitroEntityRoute,
   nitroEntityGenerateMetadata,

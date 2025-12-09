@@ -9,8 +9,8 @@ import {
   getNitroPages,
   getNitroEntities,
   nitroPageRoute,
-  nitroGenerateMetadata,
-  nitroGenerateStaticParams,
+  nitroPageGenerateMetadata,
+  nitroPageGenerateStaticParams,
   nitroEntityRoute,
   nitroEntityGenerateMetadata
 } from './server';
@@ -173,9 +173,9 @@ describe('Route Helpers', () => {
     });
   });
 
-  describe('nitroGenerateStaticParams', () => {
+  describe('nitroPageGenerateStaticParams', () => {
     it('generates static params from config pages', async () => {
-      const params = await nitroGenerateStaticParams();
+      const params = await nitroPageGenerateStaticParams();
       
       expect(params).toEqual([
         { slug: undefined }, // homepage
@@ -185,9 +185,9 @@ describe('Route Helpers', () => {
     });
   });
 
-  describe('nitroGenerateMetadata', () => {
+  describe('nitroPageGenerateMetadata', () => {
     it('generates metadata from page data', async () => {
-      const metadata = await nitroGenerateMetadata({
+      const metadata = await nitroPageGenerateMetadata({
         params: Promise.resolve({ slug: ['about'] })
       });
 
@@ -197,7 +197,7 @@ describe('Route Helpers', () => {
 
     it('throws not found for invalid page', async () => {
       await expect(
-        nitroGenerateMetadata({
+        nitroPageGenerateMetadata({
           params: Promise.resolve({ slug: ['invalid'] })
         })
       ).rejects.toThrow('Not Found');

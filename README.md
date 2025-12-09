@@ -80,8 +80,8 @@ Create a catch-all route in `app/[[...slug]]/page.tsx` to handle dynamic pages.
 // Re-export the Nitro route handlers for a one-liner setup
 export {
   nitroPageRoute as default,
-  nitroGenerateMetadata as generateMetadata,
-  nitroGenerateStaticParams as generateStaticParams,
+  nitroPageGenerateMetadata as generateMetadata,
+  nitroPageGenerateStaticParams as generateStaticParams,
 } from "@flyo/nitro-next/server";
 ```
 
@@ -356,6 +356,18 @@ This pattern works with any route structure: `[slug]`, `[id]`, `[uniqueid]`, `[w
 - **`getNitroEntities()`** – Factory for Nitro entities API (available via the Flyo Typescript SDK).
   ```ts
   import { getNitroEntities } from '@flyo/nitro-next/server';
+  ```
+- **`nitroPageRoute(props)`** – Default page route handler for Nitro pages. Renders a page from Flyo CMS.
+  ```tsx
+  import { nitroPageRoute } from '@flyo/nitro-next/server';
+  ```
+- **`nitroPageGenerateMetadata(props)`** – Generate metadata for Nitro pages using page data from Flyo.
+  ```tsx
+  import { nitroPageGenerateMetadata } from '@flyo/nitro-next/server';
+  ```
+- **`nitroPageGenerateStaticParams()`** – Generate static params for all Nitro pages to enable SSG.
+  ```tsx
+  import { nitroPageGenerateStaticParams } from '@flyo/nitro-next/server';
   ```
 - **`nitroEntityRoute(props, options)`** – Flexible entity detail page handler that works with any route param structure. Takes a custom resolver function.
   ```tsx

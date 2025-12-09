@@ -1,6 +1,6 @@
 // Re-export the Nitro route handlers for a one-liner setup
 export {
   nitroPageRoute as default,
-  nitroGenerateMetadata as generateMetadata,
-  nitroGenerateStaticParams as generateStaticParams,
+  nitroPageGenerateMetadata as generateMetadata,
+  nitroPageGenerateStaticParams as generateStaticParams,
 } from "@flyo/nitro-next/server";
