@@ -2,9 +2,9 @@ import {
     nitroEntityRoute, 
     nitroEntityGenerateMetadata, 
     getNitroEntities,
-    type Entity,
     type EntityResolver
 } from "@flyo/nitro-next/server";
+import type { Entity } from "@flyo/nitro-typescript";
 
 type RouteParams = {
     params: Promise<{ slug: string }>;

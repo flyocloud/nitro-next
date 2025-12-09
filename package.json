@@ -31,6 +31,6 @@
   },
   "dependencies": {
     "@flyo/nitro-js-bridge": "^1.1.2",
-    "@flyo/nitro-typescript": "^1.1.0"
+    "@flyo/nitro-typescript": "^1.2.0"
   }
 }
