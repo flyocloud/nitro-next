@@ -21,6 +21,7 @@ interface NitroState {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   components: Record<string, any>;
   showMissingComponentAlert: boolean;
+  liveEdit: boolean
 }
 
 const globalNitroState: NitroState = {
@@ -28,6 +29,7 @@ const globalNitroState: NitroState = {
   lang: null,
   components: {},
   showMissingComponentAlert: false,
+  liveEdit: false
 };
 
 /**
@@ -50,7 +52,7 @@ export function getNitro(): NitroState {
   return globalNitroState;
 }
 
-export const initNitro = ({accessToken, lang, components, showMissingComponentAlert}: {accessToken: string, lang?: string, components?: object, showMissingComponentAlert?: boolean}): ( () => Configuration )   => {
+export const initNitro = ({accessToken, lang, components, showMissingComponentAlert, liveEdit}: {accessToken: string, lang?: string, components?: object, showMissingComponentAlert?: boolean, liveEdit?: boolean}): ( () => Configuration )   => {
 
     if (!globalNitroState.configuration) {
       globalNitroState.configuration = new Configuration({
@@ -60,7 +62,8 @@ export const initNitro = ({accessToken, lang, components, showMissingComponentAl
 
     globalNitroState.lang = lang ?? null;
     globalNitroState.components = components ?? {};
-    globalNitroState.showMissingComponentAlert = showMissingComponentAlert ?? false;
+    globalNitroState.showMissingComponentAlert = showMissingComponentAlert ?? liveEdit ?? false;
+    globalNitroState.liveEdit = liveEdit ?? false;
 
     return () => globalNitroState.configuration!;
 }
