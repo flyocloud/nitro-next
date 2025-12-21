@@ -3,6 +3,7 @@ export {
   NitroBlock,
   NitroPage,
   initNitro,
+  getNitro,
   getNitroConfig,
   getNitroPages,
   getNitroEntities,

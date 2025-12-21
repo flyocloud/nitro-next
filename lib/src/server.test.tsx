@@ -26,7 +26,7 @@ jest.mock('next/navigation', () => ({
 // Mock @flyo/nitro-typescript
 jest.mock('@flyo/nitro-typescript', () => {
   return {
-    Configuration: jest.fn(),
+    Configuration: jest.fn().mockImplementation((config) => config),
     ConfigApi: jest.fn().mockImplementation(() => ({
       config: jest.fn().mockResolvedValue({ 
         title: 'Mock Config',

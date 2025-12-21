@@ -12,31 +12,64 @@ import {
   EntitiesApi
 } from '@flyo/nitro-typescript';
 
-let globalConfiguration: Configuration | null = null;
-let globalLang: string | null = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let globalComponents: Record<string, any> = {};
-let globalShowMissingComponentAlert: boolean = false;
+/**
+ * Interface for Nitro configuration state
+ */
+interface NitroState {
+  configuration: Configuration | null;
+  lang: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  components: Record<string, any>;
+  showMissingComponentAlert: boolean;
+}
+
+const globalNitroState: NitroState = {
+  configuration: null,
+  lang: null,
+  components: {},
+  showMissingComponentAlert: false,
+};
+
+/**
+ * Access the Nitro configuration state
+ * Can be used anywhere: server components, middlewares, API routes, etc.
+ * Must be called after initNitro() has been initialized.
+ * 
+ * @throws {Error} If Nitro has not been initialized with initNitro()
+ * 
+ * @example
+ * ```ts
+ * const state = getNitro();
+ * const { configuration, lang, components } = state;
+ * ```
+ */
+export function getNitro(): NitroState {
+  if (!globalNitroState.configuration) {
+    throw new Error('Nitro has not been initialized. Make sure to call initNitro() first.');
+  }
+  return globalNitroState;
+}
 
 export const initNitro = ({accessToken, lang, components, showMissingComponentAlert}: {accessToken: string, lang?: string, components?: object, showMissingComponentAlert?: boolean}): ( () => Configuration )   => {
 
-    if (!globalConfiguration) {
-      globalConfiguration = new Configuration({
+    if (!globalNitroState.configuration) {
+      globalNitroState.configuration = new Configuration({
         apiKey: accessToken,
       });
     }
 
-    globalLang = lang ?? null;
-    globalComponents = components ?? {};
-    globalShowMissingComponentAlert = showMissingComponentAlert ?? false;
+    globalNitroState.lang = lang ?? null;
+    globalNitroState.components = components ?? {};
+    globalNitroState.showMissingComponentAlert = showMissingComponentAlert ?? false;
 
-    return () => globalConfiguration!;
+    return () => globalNitroState.configuration!;
 }
 
 export const getNitroConfig = cache(async (): Promise<ConfigResponse> => {
+    const state = getNitro();
 
-    const configApi = new ConfigApi(globalConfiguration!);
-    const useLang = globalLang ?? undefined;
+    const configApi = new ConfigApi(state.configuration!);
+    const useLang = state.lang ?? undefined;
 
     const config = await configApi.config({ lang: useLang });
     
@@ -44,11 +77,11 @@ export const getNitroConfig = cache(async (): Promise<ConfigResponse> => {
 });
 
 export function getNitroPages(): PagesApi {
-  return new PagesApi(globalConfiguration!);
+  return new PagesApi(getNitro().configuration!);
 }
 
 export function getNitroEntities(): EntitiesApi {
-  return new EntitiesApi(globalConfiguration!);
+  return new EntitiesApi(getNitro().configuration!);
 }
 
 /**
@@ -154,13 +187,14 @@ export function NitroBlock({
     return null;
   }
 
-  const Component = block.component ? globalComponents[block.component] : undefined;
+  const state = getNitro();
+  const Component = block.component ? state.components[block.component] : undefined;
 
   if (Component) {
     return <Component block={block} />;
   }
 
-  if (globalShowMissingComponentAlert) {
+  if (state.showMissingComponentAlert) {
     return (
       <div style={{ border: '1px solid #fff', padding: '1rem', marginBottom: '1rem', backgroundColor: 'red' }}>
         Component <b>{block.component}</b> not found.
