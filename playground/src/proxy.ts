@@ -7,7 +7,7 @@
 import { createProxy } from '@flyo/nitro-next/proxy';
 
 export default createProxy({
-  enabled: process.env.FLYO_LIVE_EDIT === 'true',
+  liveEdit: process.env.FLYO_LIVE_EDIT === 'true',
   serverCacheTtl: 1200,
   clientCacheTtl: 900,
 });

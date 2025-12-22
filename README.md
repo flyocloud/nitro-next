@@ -68,7 +68,7 @@ Create a `proxy.ts` file in the `src/` directory to handle cache control based o
 import { createProxy } from '@flyo/nitro-next/proxy';
 
 export default createProxy({
-  enabled: process.env.FLYO_LIVE_EDIT === 'true',
+  liveEdit: process.env.FLYO_LIVE_EDIT === 'true',
   serverCacheTtl: 1200,
   clientCacheTtl: 900,
 });
@@ -80,11 +80,11 @@ export const config = {
 
 The proxy middleware:
 - Sets appropriate cache headers for CDN (s-maxage) and browser (max-age) based on your configuration
-- Disables caching when live edit mode is enabled or in development mode
+- Disables caching when live edit mode is enabled (which is development mode)
 - Uses Next.js middleware to intercept all requests matching the configured pattern
 
 **Configuration options:**
-- `enabled` - Enable live edit mode (typically controlled via environment variable)
+- `liveEdit` - Enabled live edit mode (typically controlled via environment variable), disables caching (default: false)
 - `serverCacheTtl` - CDN cache duration in seconds (default: 1200 = 20 min)
 - `clientCacheTtl` - Browser cache duration in seconds (default: 900 = 15 min)
 

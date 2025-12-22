@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server';
 
 export interface ProxyConfig {
   /**
-   * Enable caching (if false, all caching is disabled)
-   * @default true
+   * If live edit is enabled, caching is disabled
+   * @default false
    */
-  enabled?: boolean;
+  liveEdit?: boolean;
   /**
    * Server/CDN cache TTL in seconds
    * @default 1200
@@ -29,7 +29,7 @@ export interface ProxyConfig {
  * import { createProxy } from '@flyo/nitro-next/proxy';
  * 
  * export default createProxy({
- *   enabled: true,
+ *   liveEdit: false,
  *   serverCacheTtl: 1200,
  *   clientCacheTtl: 900,
  * });
@@ -42,7 +42,7 @@ export interface ProxyConfig {
  */
 export function createProxy(config: ProxyConfig = {}) {
   const {
-    enabled = true,
+    liveEdit = false,
     serverCacheTtl = 1200,
     clientCacheTtl = 900,
   } = config;
@@ -50,24 +50,20 @@ export function createProxy(config: ProxyConfig = {}) {
   return function proxy() {
     const res = NextResponse.next();
 
-    // Set cache headers based on configuration
-    const cachingDisabled = !enabled;
-
-    if (!cachingDisabled) {
+    if (liveEdit) {
+      // Development or live edit mode - no caching
+      res.headers.set('Vercel-CDN-Cache-Control', 'no-store');
+      res.headers.set('CDN-Cache-Control', 'no-store');
+      res.headers.set('Cache-Control', 'no-store');
+    } else {
       // Production with caching enabled
       const cdn = serverCacheTtl > 0 ? `max-age=${serverCacheTtl}` : 'no-store';
-
       res.headers.set('Vercel-CDN-Cache-Control', cdn);
       res.headers.set('CDN-Cache-Control', cdn);
 
       if (clientCacheTtl > 0) {
         res.headers.set('Cache-Control', `max-age=${clientCacheTtl}`);
       }
-    } else {
-      // Development or live edit mode - no caching
-      res.headers.set('Vercel-CDN-Cache-Control', 'no-store');
-      res.headers.set('CDN-Cache-Control', 'no-store');
-      res.headers.set('Cache-Control', 'no-store');
     }
 
     return res;
