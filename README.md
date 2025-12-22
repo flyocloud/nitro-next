@@ -54,7 +54,35 @@ export function Flyo({ children }: { children: ReactNode }) {
 }
 ```
 
-### 3. Setup Layout
+### 3. Setup Proxy
+
+Create a `proxy.ts` file in the `src/` directory to handle cache control based on live edit mode:
+
+```tsx
+import { createProxy } from '@flyo/nitro-next/proxy';
+
+export default createProxy({
+  enabled: process.env.FLYO_LIVE_EDIT === 'true',
+  serverCacheTtl: 1200,
+  clientCacheTtl: 900,
+});
+
+export const config = {
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
+};
+```
+
+The proxy middleware:
+- Sets appropriate cache headers for CDN (s-maxage) and browser (max-age) based on your configuration
+- Disables caching when live edit mode is enabled or in development mode
+- Uses Next.js middleware to intercept all requests matching the configured pattern
+
+**Configuration options:**
+- `enabled` - Enable live edit mode (typically controlled via environment variable)
+- `serverCacheTtl` - CDN cache duration in seconds (default: 1200 = 20 min)
+- `clientCacheTtl` - Browser cache duration in seconds (default: 900 = 15 min)
+
+### 4. Setup Layout
 
 Wrap your application with the provider in `app/layout.tsx`.
 
@@ -72,7 +100,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 }
 ```
 
-### 4. Create Page
+### 5. Create Page
 
 Create a catch-all route in `app/[[...slug]]/page.tsx` to handle dynamic pages.
 
@@ -85,7 +113,7 @@ export {
 } from "@flyo/nitro-next/server";
 ```
 
-### 5. Create Custom Components
+### 6. Create Custom Components
 
 Create custom components for your Flyo blocks. Each component receives a `block` object containing the content from your CMS.
 
@@ -116,7 +144,7 @@ export function HeroBanner({ block }: { block: Block }) {
 
 The `editable()` helper function marks the component as editable in the Flyo CMS live editor. It spreads the necessary data attributes onto your component's root element to enable in-place editing.
 
-### 6. WYSIWYG Component
+### 7. WYSIWYG Component
 
 The `FlyoWysiwyg` component renders ProseMirror/TipTap JSON content. It handles standard nodes automatically and allows you to provide custom components for specific node types.
 
@@ -184,7 +212,7 @@ export default function MyComponent({ block }) {
 
 The component will use your custom `CustomImage` component for all `image` nodes, and render all other nodes using the default WYSIWYG renderer.
 
-### 7. Entity Detail Pages
+### 8. Entity Detail Pages
 
 Nitro provides flexible helpers for creating entity detail pages with any route structure. You define a **resolver function** that fetches the entity from your route params, and the library handles caching and rendering.
 

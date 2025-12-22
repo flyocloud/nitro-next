@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     client: 'src/client.tsx',
     server: 'src/server.tsx',
+    proxy: 'src/proxy.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,

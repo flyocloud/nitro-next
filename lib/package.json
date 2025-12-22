@@ -35,6 +35,11 @@
       "types": "./dist/client.d.ts",
       "import": "./dist/client.mjs",
       "require": "./dist/client.js"
+    },
+    "./proxy": {
+      "types": "./dist/proxy.d.ts",
+      "import": "./dist/proxy.mjs",
+      "require": "./dist/proxy.js"
     }
   },
   "files": [

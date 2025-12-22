@@ -15,16 +15,19 @@ import {
 /**
  * Interface for Nitro configuration state
  */
-interface NitroState {
+export interface NitroState {
   configuration: Configuration | null;
   lang: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   components: Record<string, any>;
   showMissingComponentAlert: boolean;
-  liveEdit: boolean
+  liveEdit: boolean;
 }
 
-const globalNitroState: NitroState = {
+/**
+ * Global Nitro state - shared across server and middleware
+ */
+export const globalNitroState: NitroState = {
   configuration: null,
   lang: null,
   components: {},
@@ -52,7 +55,19 @@ export function getNitro(): NitroState {
   return globalNitroState;
 }
 
-export const initNitro = ({accessToken, lang, components, showMissingComponentAlert, liveEdit}: {accessToken: string, lang?: string, components?: object, showMissingComponentAlert?: boolean, liveEdit?: boolean}): ( () => Configuration )   => {
+export const initNitro = ({
+  accessToken,
+  lang,
+  components,
+  showMissingComponentAlert,
+  liveEdit,
+}: {
+  accessToken: string;
+  lang?: string;
+  components?: object;
+  showMissingComponentAlert?: boolean;
+  liveEdit?: boolean;
+}): ( () => Configuration )   => {
 
     if (!globalNitroState.configuration) {
       globalNitroState.configuration = new Configuration({
