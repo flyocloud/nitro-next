@@ -17,9 +17,13 @@ const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
 
 
 export const flyoConfig = initNitro({
+    // API token for authenticating with the Flyo CMS
     accessToken: accessToken,
+    // Language code for content retrieval
     lang: 'en',
+    // Enable live editing mode - when true, wraps your app with FlyoClientWrapper for real-time content updates
     liveEdit: liveEdit,
+    // Map of CMS block types to React components - register all custom components here
     components: {
         HeroBanner: HeroBanner,
         Text: Text
