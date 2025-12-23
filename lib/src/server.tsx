@@ -224,6 +224,46 @@ export function NitroBlock({
 }
 
 /**
+ * NitroSlot component renders nested blocks from a slot
+ * Used for recursive block rendering when blocks contain slots
+ * 
+ * @example
+ * ```tsx
+ * import { NitroSlot } from '@flyo/nitro-next/server';
+ * 
+ * export default function MyComponent({ block }) {
+ *   return (
+ *     <div>
+ *       <NitroSlot slot={block.slots.mysuperslotname} />
+ *     </div>
+ *   );
+ * }
+ * ```
+ */
+export function NitroSlot({
+  slot,
+}: {
+  slot?: {
+    content?: Block[];
+  };
+}) {
+  if (!slot?.content || !Array.isArray(slot.content)) {
+    return null;
+  }
+
+  return (
+    <>
+      {slot.content.map((block: Block, index: number) => (
+        <NitroBlock
+          key={block.uid || index}
+          block={block}
+        />
+      ))}
+    </>
+  );
+}
+
+/**
  * Default page route handler for Nitro pages
  * Can be re-exported directly from Next.js app routes
  * 

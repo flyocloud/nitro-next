@@ -2,6 +2,7 @@
 export {
   NitroBlock,
   NitroPage,
+  NitroSlot,
   initNitro,
   getNitro,
   getNitroConfig,

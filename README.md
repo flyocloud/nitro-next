@@ -232,7 +232,32 @@ export default function MyComponent({ block }) {
 
 The component will use your custom `CustomImage` component for all `image` nodes, and render all other nodes using the default WYSIWYG renderer.
 
-### 8. Entity Detail Pages
+### 8. Nested Blocks (Slots)
+
+When blocks contain nested blocks in slots, use the `NitroSlot` component to recursively render them. This is useful for container-like components that can hold other blocks.
+
+```tsx
+import { NitroSlot } from '@flyo/nitro-next/server';
+import { Block } from '@flyo/nitro-typescript';
+
+export function Container({ block }: { block: Block }) {
+  return (
+    <div className="container">
+      <h2>{block.content?.title}</h2>
+      {/* Render nested blocks from the slot */}
+      <NitroSlot slot={block.slots?.content} />
+    </div>
+  );
+}
+```
+
+The `NitroSlot` component automatically handles:
+- Checking if the slot exists and has content
+- Iterating over nested blocks
+- Recursively rendering each block using `NitroBlock`
+- Supporting unlimited nesting depth
+
+### 9. Entity Detail Pages
 
 Nitro provides flexible helpers for creating entity detail pages with any route structure. You define a **resolver function** that fetches the entity from your route params, and the library handles caching and rendering.
 
@@ -442,6 +467,10 @@ This pattern works with any route structure: `[slug]`, `[id]`, `[uniqueid]`, `[w
 - **`NitroBlock`** – Low-level renderer that looks up and renders the registered component for a block, or shows a placeholder if missing.
   ```tsx
   import { NitroBlock } from '@flyo/nitro-next/server';
+  ```
+- **`NitroSlot`** – Renders nested blocks from a slot. Used for recursive block rendering when blocks contain slots with child blocks.
+  ```tsx
+  import { NitroSlot } from '@flyo/nitro-next/server';
   ```
 
 ## Development

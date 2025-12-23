@@ -6,6 +6,7 @@ import {
   getNitroConfig,
   NitroPage,
   NitroBlock,
+  NitroSlot,
   getNitroPages,
   getNitroEntities,
   nitroPageRoute,
@@ -148,6 +149,92 @@ describe('NitroBlock', () => {
 
     render(<NitroBlock block={block} />);
     expect(screen.getByText('Visible')).toBeInTheDocument();
+  });
+});
+
+describe('NitroSlot', () => {
+  beforeEach(() => {
+    initNitro({ 
+      accessToken: 'test',
+      components: {}
+    });
+  });
+
+  it('renders nothing if slot is undefined', () => {
+    const { container } = render(<NitroSlot slot={undefined} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders nothing if slot has no content', () => {
+    const { container } = render(<NitroSlot slot={{}} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders nothing if slot content is not an array', () => {
+    const { container } = render(<NitroSlot slot={{ content: 'invalid' as unknown as Block[] }} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('renders nested blocks from slot content', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TestBlock = ({ block }: { block: Block }) => <div>{(block as any).content}</div>;
+    
+    initNitro({ 
+      accessToken: 'test',
+      components: { TestBlock }
+    });
+
+    const slot = {
+      content: [
+        { uid: '1', component: 'TestBlock', content: 'Nested 1' },
+        { uid: '2', component: 'TestBlock', content: 'Nested 2' },
+      ] as unknown as Block[]
+    };
+
+    render(<NitroSlot slot={slot} />);
+    expect(screen.getByText('Nested 1')).toBeInTheDocument();
+    expect(screen.getByText('Nested 2')).toBeInTheDocument();
+  });
+
+  it('handles deeply nested slots recursively', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const Container = ({ block }: { block: Block }) => (
+      <div>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <span>{(block as any).content}</span>
+        {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+        <NitroSlot slot={(block as any).slots?.nested} />
+      </div>
+    );
+    
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const TextBlock = ({ block }: { block: Block }) => <p>{(block as any).content}</p>;
+    
+    initNitro({ 
+      accessToken: 'test',
+      components: { Container, TextBlock }
+    });
+
+    const slot = {
+      content: [
+        {
+          uid: '1',
+          component: 'Container',
+          content: 'Parent',
+          slots: {
+            nested: {
+              content: [
+                { uid: '2', component: 'TextBlock', content: 'Child' }
+              ]
+            }
+          }
+        }
+      ] as unknown as Block[]
+    };
+
+    render(<NitroSlot slot={slot} />);
+    expect(screen.getByText('Parent')).toBeInTheDocument();
+    expect(screen.getByText('Child')).toBeInTheDocument();
   });
 });
 
