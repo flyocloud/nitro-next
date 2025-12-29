@@ -251,8 +251,9 @@ export function Container({ block }: { block: Block }) {
 }
 ```
 
+> Keep in mind that `NitroSlot` can only be used in server components, as it relies on server-side rendering of blocks.
+
 The `NitroSlot` component automatically handles:
-- Checking if the slot exists and has content
 - Iterating over nested blocks
 - Recursively rendering each block using `NitroBlock`
 - Supporting unlimited nesting depth
