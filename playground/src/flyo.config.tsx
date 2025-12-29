@@ -26,6 +26,10 @@ export const flyoConfig = initNitro({
     baseUrl: baseUrl,
     // Enable live editing mode - when true, wraps your app with FlyoClientWrapper for real-time content updates
     liveEdit: liveEdit,
+    // Server/CDN cache TTL in seconds (default: 1200 = 20 minutes)
+    serverCacheTtl: 1200,
+    // Client browser cache TTL in seconds (default: 900 = 15 minutes)
+    clientCacheTtl: 900,
     // Map of CMS block types to React components - register all custom components here
     components: {
         HeroBanner: HeroBanner,

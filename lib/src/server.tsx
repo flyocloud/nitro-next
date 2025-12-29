@@ -25,6 +25,8 @@ export interface NitroState {
   components: Record<string, any>;
   showMissingComponentAlert: boolean;
   liveEdit: boolean;
+  serverCacheTtl: number;
+  clientCacheTtl: number;
 }
 
 /**
@@ -36,7 +38,9 @@ export const globalNitroState: NitroState = {
   baseUrl: null,
   components: {},
   showMissingComponentAlert: false,
-  liveEdit: false
+  liveEdit: false,
+  serverCacheTtl: 1200,
+  clientCacheTtl: 900
 };
 
 /**
@@ -66,6 +70,8 @@ export const initNitro = ({
   components,
   showMissingComponentAlert,
   liveEdit,
+  serverCacheTtl,
+  clientCacheTtl,
 }: {
   accessToken: string;
   lang?: string;
@@ -73,6 +79,8 @@ export const initNitro = ({
   components?: object;
   showMissingComponentAlert?: boolean;
   liveEdit?: boolean;
+  serverCacheTtl?: number;
+  clientCacheTtl?: number;
 }): ( () => NitroState )   => {
 
     if (!globalNitroState.configuration) {
@@ -86,6 +94,8 @@ export const initNitro = ({
     globalNitroState.components = components ?? {};
     globalNitroState.showMissingComponentAlert = showMissingComponentAlert ?? liveEdit ?? false;
     globalNitroState.liveEdit = liveEdit ?? false;
+    globalNitroState.serverCacheTtl = serverCacheTtl ?? 1200;
+    globalNitroState.clientCacheTtl = clientCacheTtl ?? 900;
 
     return () => globalNitroState;
 }

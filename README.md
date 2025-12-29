@@ -39,6 +39,10 @@ export const flyoConfig = initNitro({
   baseUrl: baseUrl,
   // Enable live editing mode - when true, wraps your app with FlyoClientWrapper for real-time content updates
   liveEdit: liveEdit,
+  // Server/CDN cache TTL in seconds (default: 1200 = 20 minutes)
+  serverCacheTtl: 1200,
+  // Client browser cache TTL in seconds (default: 900 = 15 minutes)
+  clientCacheTtl: 900,
   // Map of CMS block types to React components - register all custom components here
   components: {
     HeroBanner: HeroBanner,
@@ -65,16 +69,13 @@ export function Flyo({ children }: { children: ReactNode }) {
 
 ### 3. Setup Proxy
 
-Create a `proxy.ts` file in the `src/` directory to handle cache control based on live edit mode:
+Create a `proxy.ts` file in the `src/` directory to handle cache control:
 
 ```tsx
 import { createProxy } from '@flyo/nitro-next/proxy';
+import { flyoConfig } from './flyo.config';
 
-export default createProxy({
-  liveEdit: process.env.FLYO_LIVE_EDIT === 'true',
-  serverCacheTtl: 1200,
-  clientCacheTtl: 900,
-});
+export default createProxy(flyoConfig());
 
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
@@ -83,11 +84,12 @@ export const config = {
 
 The proxy middleware:
 - Sets appropriate cache headers for CDN (s-maxage) and browser (max-age) based on your configuration
-- Disables caching when live edit mode is enabled (which is development mode)
+- Disables caching when live edit mode is enabled (development mode)
 - Uses Next.js middleware to intercept all requests matching the configured pattern
+- Reads cache TTL values from your Nitro configuration (`serverCacheTtl` and `clientCacheTtl`)
 
-**Configuration options:**
-- `liveEdit` - Enabled live edit mode (typically controlled via environment variable), disables caching (default: false)
+**Configuration options in `initNitro()`:**
+- `liveEdit` - Enables live edit mode (typically controlled via environment variable), disables caching (default: false)
 - `serverCacheTtl` - CDN cache duration in seconds (default: 1200 = 20 min)
 - `clientCacheTtl` - Browser cache duration in seconds (default: 900 = 15 min)
 
@@ -522,6 +524,10 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
 - **`getNitro()`** – Access the current Nitro configuration state after initialization.
   ```tsx
   import { getNitro } from '@flyo/nitro-next/server';
+  ```
+- **`createProxy(state)`** – Create a Next.js middleware for cache control. Takes the Nitro state (from `flyoConfig()`) as parameter.
+  ```tsx
+  import { createProxy } from '@flyo/nitro-next/proxy';
   ```
 - **`NitroPage`** – Server component that renders a whole Nitro page by delegating to `NitroBlock` for each block.
   ```tsx

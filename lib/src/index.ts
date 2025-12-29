@@ -21,6 +21,7 @@ export {
   nitroSitemap,
   // Types
   type EntityResolver,
+  type NitroState,
 } from './server';
 
 // Re-export types from Flyo SDK for convenience

@@ -5,12 +5,9 @@
  */
 
 import { createProxy } from '@flyo/nitro-next/proxy';
+import { flyoConfig } from './flyo.config';
 
-export default createProxy({
-  liveEdit: process.env.FLYO_LIVE_EDIT === 'true',
-  serverCacheTtl: 1200,
-  clientCacheTtl: 900,
-});
+export default createProxy(flyoConfig());
 
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
