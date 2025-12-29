@@ -9,7 +9,9 @@ import {
   ConfigResponse,
   Configuration,
   PagesApi,
-  EntitiesApi
+  EntitiesApi,
+  SitemapApi,
+  SearchApi
 } from '@flyo/nitro-typescript';
 
 /**
@@ -100,6 +102,14 @@ export function getNitroPages(): PagesApi {
 
 export function getNitroEntities(): EntitiesApi {
   return new EntitiesApi(getNitro().configuration!);
+}
+
+export function getNitroSitemap(): SitemapApi {
+  return new SitemapApi(getNitro().configuration!);
+}
+
+export function getNitroSearch(): SearchApi {
+  return new SearchApi(getNitro().configuration!);
 }
 
 /**
