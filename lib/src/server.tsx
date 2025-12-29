@@ -1,5 +1,5 @@
 import { cache } from 'react';
-import type { Metadata } from 'next';
+import type { Metadata, MetadataRoute } from 'next';
 import { notFound } from 'next/navigation';
 import {
   Page,
@@ -20,6 +20,7 @@ import {
 export interface NitroState {
   configuration: Configuration | null;
   lang: string | null;
+  baseUrl: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   components: Record<string, any>;
   showMissingComponentAlert: boolean;
@@ -32,6 +33,7 @@ export interface NitroState {
 export const globalNitroState: NitroState = {
   configuration: null,
   lang: null,
+  baseUrl: null,
   components: {},
   showMissingComponentAlert: false,
   liveEdit: false
@@ -60,16 +62,18 @@ export function getNitro(): NitroState {
 export const initNitro = ({
   accessToken,
   lang,
+  baseUrl,
   components,
   showMissingComponentAlert,
   liveEdit,
 }: {
   accessToken: string;
   lang?: string;
+  baseUrl?: string;
   components?: object;
   showMissingComponentAlert?: boolean;
   liveEdit?: boolean;
-}): ( () => Configuration )   => {
+}): ( () => NitroState )   => {
 
     if (!globalNitroState.configuration) {
       globalNitroState.configuration = new Configuration({
@@ -78,11 +82,12 @@ export const initNitro = ({
     }
 
     globalNitroState.lang = lang ?? null;
+    globalNitroState.baseUrl = baseUrl ?? null;
     globalNitroState.components = components ?? {};
     globalNitroState.showMissingComponentAlert = showMissingComponentAlert ?? liveEdit ?? false;
     globalNitroState.liveEdit = liveEdit ?? false;
 
-    return () => globalNitroState.configuration!;
+    return () => globalNitroState;
 }
 
 export const getNitroConfig = cache(async (): Promise<ConfigResponse> => {
@@ -456,4 +461,79 @@ export async function nitroEntityGenerateMetadata<T = any>(
       images: image ? [image] : [],
     },
   };
+}
+
+/**
+ * Generate sitemap for Next.js from Flyo Nitro
+ * Fetches all pages and entities from the sitemap endpoint
+ * Uses the baseUrl from the Nitro configuration state
+ * 
+ * @param state The Nitro state containing configuration and baseUrl
+ * @returns Promise resolving to Next.js MetadataRoute.Sitemap format
+ * 
+ * @example
+ * ```ts
+ * // app/sitemap.ts
+ * import { nitroSitemap } from '@flyo/nitro-next/server';
+ * import { flyoConfig } from '../flyo.config';
+ * 
+ * export default async function sitemap() {
+ *   return nitroSitemap(flyoConfig());
+ * }
+ * ```
+ * 
+ * @example
+ * ```ts
+ * // flyo.config.tsx
+ * export const flyoConfig = initNitro({
+ *   accessToken: process.env.FLYO_ACCESS_TOKEN!,
+ *   baseUrl: process.env.SITE_URL || 'http://localhost:3000',
+ *   lang: 'en',
+ * });
+ * ```
+ */
+export async function nitroSitemap(state: NitroState): Promise<MetadataRoute.Sitemap> {
+  const sitemapApi = getNitroSitemap();
+  const lang = state.lang ?? undefined;
+
+  if (!state.baseUrl) {
+    throw new Error('baseUrl is not configured in Nitro state. Please set it in initNitro().');
+  }
+
+  // Fetch all sitemap entries from Flyo Nitro
+  const items = await sitemapApi.sitemap({ lang });
+
+  const baseUrl = state.baseUrl;
+  
+  // Remove trailing slash from baseUrl for consistency
+  const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+
+  return items.map((item) => {
+    // Prefer routes object if available, otherwise use entity_slug
+    let path = '';
+    
+    if (item.routes && typeof item.routes === 'object') {
+      // Use the first available route from the routes object
+      const routeValues = Object.values(item.routes);
+      if (routeValues.length > 0) {
+        path = routeValues[0];
+      }
+    }
+    
+    // Fallback to entity_slug if no routes found
+    if (!path && item.entity_slug) {
+      path = item.entity_slug;
+    }
+
+    // Ensure path starts with /
+    const cleanPath = path && !path.startsWith('/') ? `/${path}` : path;
+
+    // Convert Unix timestamp to Date if available
+    const lastModified = new Date();
+
+    return {
+      url: `${cleanBaseUrl}${cleanPath}`,
+      lastModified,
+    };
+  });
 }

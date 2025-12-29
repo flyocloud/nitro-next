@@ -14,6 +14,7 @@ import { Text } from './components/Text';
 // Get configuration from environment variables
 const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
 const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
+const baseUrl = process.env.SITE_URL || 'http://localhost:3000';
 
 
 export const flyoConfig = initNitro({
@@ -21,6 +22,8 @@ export const flyoConfig = initNitro({
     accessToken: accessToken,
     // Language code for content retrieval
     lang: 'en',
+    // Base URL for your site (used for sitemap generation, canonical URLs, etc.)
+    baseUrl: baseUrl,
     // Enable live editing mode - when true, wraps your app with FlyoClientWrapper for real-time content updates
     liveEdit: liveEdit,
     // Map of CMS block types to React components - register all custom components here

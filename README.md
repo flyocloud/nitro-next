@@ -28,12 +28,15 @@ import { Text } from './components/Text';
 // Get configuration from environment variables
 const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
 const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
+const baseUrl = process.env.SITE_URL || 'http://localhost:3000';
 
 export const flyoConfig = initNitro({
   // API token for authenticating with the Flyo CMS
   accessToken: accessToken,
   // Language code for content retrieval
   lang: 'en',
+  // Base URL for your site (used for sitemap generation, canonical URLs, etc.)
+  baseUrl: baseUrl,
   // Enable live editing mode - when true, wraps your app with FlyoClientWrapper for real-time content updates
   liveEdit: liveEdit,
   // Map of CMS block types to React components - register all custom components here
@@ -406,6 +409,57 @@ export default function Product(props: RouteParams) {
 
 This pattern works with any route structure: `[slug]`, `[id]`, `[uniqueid]`, `[whatever]` - you control the resolution logic!
 
+### 10. Sitemap Generation
+
+Nitro provides a helper function to automatically generate a Next.js sitemap from your Flyo CMS content. The sitemap includes all pages and mapped entities.
+
+#### Setup
+
+First, ensure your `flyo.config.tsx` includes the `baseUrl` parameter:
+
+```tsx
+export const flyoConfig = initNitro({
+  accessToken: process.env.FLYO_ACCESS_TOKEN || '',
+  lang: 'en',
+  baseUrl: process.env.SITE_URL || 'http://localhost:3000', // Required for sitemap
+  liveEdit: process.env.FLYO_LIVE_EDIT === 'true',
+  components: {
+    // your components
+  }
+});
+```
+
+#### Create Sitemap File
+
+Create `app/sitemap.ts`:
+
+```ts
+import { nitroSitemap } from '@flyo/nitro-next/server';
+import { flyoConfig } from '../flyo.config';
+
+export default async function sitemap() {
+  return nitroSitemap(flyoConfig());
+}
+```
+
+#### How it Works
+
+1. **Fetches all content**: The `nitroSitemap` function fetches all pages and entities from the Flyo Nitro sitemap endpoint
+2. **Uses configured baseUrl**: It constructs full URLs using the `baseUrl` from your Nitro configuration
+3. **Handles routes**: Prioritizes the `routes` object from entities, falls back to `entity_slug`
+4. **Returns Next.js format**: Outputs the standard `MetadataRoute.Sitemap` format that Next.js expects
+
+#### Environment Variables
+
+Set the `SITE_URL` environment variable for production:
+
+```bash
+# .env.production
+SITE_URL=https://yourdomain.com
+```
+
+Next.js will automatically serve the sitemap at `/sitemap.xml`.
+
 ## API Reference
 
 ### Client Exports
@@ -460,6 +514,14 @@ This pattern works with any route structure: `[slug]`, `[id]`, `[uniqueid]`, `[w
 - **`nitroEntityGenerateMetadata(props, options)`** – Generate metadata for entity detail pages using a custom resolver function.
   ```tsx
   import { nitroEntityGenerateMetadata } from '@flyo/nitro-next/server';
+  ```
+- **`nitroSitemap(state)`** – Generate a Next.js sitemap from Flyo Nitro content. Takes the Nitro state (from `flyoConfig()`) as parameter.
+  ```tsx
+  import { nitroSitemap } from '@flyo/nitro-next/server';
+  ```
+- **`getNitro()`** – Access the current Nitro configuration state after initialization.
+  ```tsx
+  import { getNitro } from '@flyo/nitro-next/server';
   ```
 - **`NitroPage`** – Server component that renders a whole Nitro page by delegating to `NitroBlock` for each block.
   ```tsx

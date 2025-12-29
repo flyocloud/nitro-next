@@ -17,6 +17,8 @@ export {
   // Route helpers for Next.js app router - Entities
   nitroEntityRoute,
   nitroEntityGenerateMetadata,
+  // Sitemap helper for Next.js
+  nitroSitemap,
   // Types
   type EntityResolver,
 } from './server';
