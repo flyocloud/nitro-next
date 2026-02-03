@@ -99,17 +99,33 @@ Wrap your application with the provider in `app/layout.tsx`.
 
 ```tsx
 import { Flyo } from '@/flyo.config';
+import { getNitroConfig, NitroDebugInfo } from '@flyo/nitro-next/server';
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const config = await getNitroConfig();
+  
   return (
     <Flyo>
       <html>
-        <body>{children}</body>
+        <body>
+          <NitroDebugInfo config={config} />
+          {children}
+        </body>
       </html>
     </Flyo>
   );
 }
 ```
+
+The `NitroDebugInfo` component outputs debug information as an HTML comment, including:
+- Live edit status
+- Environment mode
+- API version and last update date
+- Token type (production/develop)
+- Deployment ID and commit SHA (Vercel)
+- Release version (if set)
+
+This is useful for debugging and verifying your deployment configuration.
 
 ### 5. Create Page
 
@@ -572,6 +588,10 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
 - **`NitroSlot`** – Renders nested blocks from a slot. Used for recursive block rendering when blocks contain slots with child blocks.
   ```tsx
   import { NitroSlot } from '@flyo/nitro-next/server';
+  ```
+- **`NitroDebugInfo`** – Server component that outputs debug information about the Nitro setup as an HTML comment. Includes environment, API version, token type, and deployment details.
+  ```tsx
+  import { NitroDebugInfo } from '@flyo/nitro-next/server';
   ```
 
 ## Development

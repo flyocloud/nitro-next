@@ -7,15 +7,17 @@ import {
   NitroPage,
   NitroBlock,
   NitroSlot,
+  NitroDebugInfo,
   getNitroPages,
   getNitroEntities,
   nitroPageRoute,
   nitroPageGenerateMetadata,
   nitroPageGenerateStaticParams,
   nitroEntityRoute,
-  nitroEntityGenerateMetadata
+  nitroEntityGenerateMetadata,
+  globalNitroState
 } from './server';
-import { Configuration, Page, Block, Entity } from '@flyo/nitro-typescript';
+import { Configuration, Page, Block, Entity, ConfigResponse } from '@flyo/nitro-typescript';
 
 // Mock next/navigation
 jest.mock('next/navigation', () => ({
@@ -27,7 +29,10 @@ jest.mock('next/navigation', () => ({
 // Mock @flyo/nitro-typescript
 jest.mock('@flyo/nitro-typescript', () => {
   return {
-    Configuration: jest.fn().mockImplementation((config) => config),
+    Configuration: jest.fn().mockImplementation((config) => ({
+      ...config,
+      apiKey: config.apiKey // Ensure apiKey is properly stored
+    })),
     ConfigApi: jest.fn().mockImplementation(() => ({
       config: jest.fn().mockResolvedValue({ 
         title: 'Mock Config',
@@ -439,5 +444,125 @@ describe('Entity Route Helpers', () => {
         )
       ).rejects.toThrow('Entity not found');
     });
+  });
+});
+
+describe('NitroDebugInfo', () => {
+  beforeEach(() => {
+    // Clear environment variables
+    delete process.env.NODE_ENV;
+    delete process.env.VERCEL_DEPLOYMENT_ID;
+    delete process.env.VERCEL_GIT_COMMIT_SHA;
+    delete process.env.VERSION;
+    
+    // Reset global state to allow new configuration
+    globalNitroState.configuration = null;
+  });
+
+  it('renders debug info with production token', () => {
+    initNitro({ 
+      accessToken: 'p-production-token',
+      liveEdit: false
+    });
+
+    const mockConfig: Partial<ConfigResponse> = {
+      nitro: {
+        version: 123,
+        updated_at: 1609459200 // 2021-01-01 00:00:00 UTC
+      }
+    };
+
+    const { container } = render(<NitroDebugInfo config={mockConfig as ConfigResponse} />);
+    const html = container.innerHTML;
+    
+    expect(html).toContain('<!-- ');
+    expect(html).toContain('liveedit:false');
+    expect(html).toContain('tokentype:production');
+    expect(html).toContain('version:123');
+  });
+
+  it('renders debug info with develop token', () => {
+    initNitro({ 
+      accessToken: 'd-develop-token',
+      liveEdit: true
+    });
+
+    const mockConfig: Partial<ConfigResponse> = {
+      nitro: {
+        version: 456,
+        updated_at: 1609459200
+      }
+    };
+
+    const { container } = render(<NitroDebugInfo config={mockConfig as ConfigResponse} />);
+    const html = container.innerHTML;
+    
+    expect(html).toContain('liveedit:true');
+    expect(html).toContain('tokentype:develop');
+    expect(html).toContain('version:456');
+  });
+
+  it('includes environment variables when available', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.VERCEL_DEPLOYMENT_ID = 'dpl_abc123';
+    process.env.VERCEL_GIT_COMMIT_SHA = 'sha123abc';
+    process.env.VERSION = 'v1.2.3';
+
+    initNitro({ 
+      accessToken: 'p-token',
+      liveEdit: false
+    });
+
+    const mockConfig: Partial<ConfigResponse> = {
+      nitro: {
+        version: 789,
+        updated_at: 1609459200
+      }
+    };
+
+    const { container } = render(<NitroDebugInfo config={mockConfig as ConfigResponse} />);
+    const html = container.innerHTML;
+    
+    expect(html).toContain('env:production');
+    expect(html).toContain('did:dpl_abc123');
+    expect(html).toContain('csha:sha123abc');
+    expect(html).toContain('release:v1.2.3');
+  });
+
+  it('handles missing config data gracefully', () => {
+    initNitro({ 
+      accessToken: 'test-token',
+      liveEdit: false
+    });
+
+    const mockConfig: Partial<ConfigResponse> = {};
+
+    const { container } = render(<NitroDebugInfo config={mockConfig as ConfigResponse} />);
+    const html = container.innerHTML;
+    
+    expect(html).toContain('<!-- ');
+    expect(html).toContain('version:-');
+    expect(html).toContain('versiondate:-');
+  });
+
+  it('formats date in de-CH locale', () => {
+    initNitro({ 
+      accessToken: 'test-token',
+      liveEdit: false
+    });
+
+    const mockConfig: Partial<ConfigResponse> = {
+      nitro: {
+        version: 1,
+        updated_at: 1609459200 // 2021-01-01 00:00:00 UTC
+      }
+    };
+
+    const { container } = render(<NitroDebugInfo config={mockConfig as ConfigResponse} />);
+    const html = container.innerHTML;
+    
+    // Check that a formatted date is present (format: DD.MM.YYYY, HH:MM)
+    expect(html).toContain('versiondate:');
+    expect(html).toMatch(/versiondate:\d{2}\.\d{2}\.\d{4},\s\d{2}:\d{2}/);
   });
 });

@@ -179,6 +179,90 @@ const resolveNitroRoute = cache(async ({ params }: RouteParams) => {
 export type EntityResolver<T = any> = (params: Promise<T>) => Promise<Entity>;
 
 /**
+ * Helper function to read environment variables with fallback
+ * Checks process.env for server-side environment variables
+ */
+const readEnv = (key: string, fallback = ""): string => {
+  const value = process.env[key];
+  if (value !== undefined && value !== "") {
+    return String(value);
+  }
+  return fallback;
+};
+
+/**
+ * NitroDebugInfo Component
+ * 
+ * Outputs debug information about the current Nitro/Flyo setup as an HTML comment.
+ * This includes environment info, API version, token type, deployment details, etc.
+ * 
+ * Usage: Add <NitroDebugInfo config={config} /> to your layout to include debug info in the HTML output.
+ */
+export function NitroDebugInfo({ config }: { config: ConfigResponse }) {
+  try {
+    // Get Nitro state
+    const state = getNitro();
+
+    // Get environment variables
+    const mode = readEnv("NODE_ENV", "-");
+    const vercelDeploymentId = readEnv("VERCEL_DEPLOYMENT_ID", "-");
+    const vercelGitCommitSha = readEnv("VERCEL_GIT_COMMIT_SHA", "-");
+    const version = readEnv("VERSION", "");
+
+    // Get token from configuration and determine type
+    const tokenValue = state.configuration?.apiKey || "";
+    const token = typeof tokenValue === "string" ? tokenValue : "";
+    const tokenType = token.startsWith("p-")
+      ? "production"
+      : token.startsWith("d-")
+      ? "develop"
+      : "unknown";
+
+    // Get live edit / debug status
+    const debug = state.liveEdit;
+
+    // Get API version from config.nitro
+    const apiVersion = config.nitro?.version?.toString() || "-";
+    const apiLastUpdate = config.nitro?.updated_at
+      ? new Date(config.nitro.updated_at * 1000).toLocaleString("de-CH", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "-";
+
+    // Build debug info parts
+    const debugInfoParts = [
+      `liveedit:${debug}`,
+      `env:${mode}`,
+      `version:${apiVersion}`,
+      `versiondate:${apiLastUpdate}`,
+      `tokentype:${tokenType}`,
+      `did:${vercelDeploymentId}`,
+      `csha:${vercelGitCommitSha}`,
+    ];
+
+    if (version) {
+      debugInfoParts.push(`release:${version}`);
+    }
+
+    const debugInfo = debugInfoParts.join(" | ");
+
+    // Return just the HTML comment as a real HTML comment (not text)
+    // React requires dangerouslySetInnerHTML for raw HTML, so we use an empty template element
+    // which is semantic and doesn't render in the DOM tree
+    return (
+      <template dangerouslySetInnerHTML={{ __html: `<!-- ${debugInfo} -->` }} suppressHydrationWarning />
+    );
+  } catch (error) {
+    // If Nitro is not initialized or there's an error, return empty comment
+    return <template dangerouslySetInnerHTML={{ __html: `<!-- nitro-debug: not initialized -->` }} suppressHydrationWarning />;
+  }
+}
+
+/**
  * Internal helper to wrap and cache entity resolvers
  * Ensures the resolver is only called once per unique params
  */

@@ -3,6 +3,7 @@ export {
   NitroBlock,
   NitroPage,
   NitroSlot,
+  NitroDebugInfo,
   initNitro,
   getNitro,
   getNitroConfig,
@@ -25,7 +26,7 @@ export {
 } from './server';
 
 // Re-export types from Flyo SDK for convenience
-export type { Entity, Block, Page } from '@flyo/nitro-typescript';
+export type { Entity, Block, Page, ConfigResponse } from '@flyo/nitro-typescript';
 
 // Re-export client utilities for convenience
 export { flyoCdnLoader } from './client';
