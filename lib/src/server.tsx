@@ -19,6 +19,7 @@ import {
  */
 export interface NitroState {
   configuration: Configuration | null;
+  accessToken: string | null;
   lang: string | null;
   baseUrl: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -34,6 +35,7 @@ export interface NitroState {
  */
 export const globalNitroState: NitroState = {
   configuration: null,
+  accessToken: null,
   lang: null,
   baseUrl: null,
   components: {},
@@ -89,6 +91,7 @@ export const initNitro = ({
       });
     }
 
+    globalNitroState.accessToken = accessToken;
     globalNitroState.lang = lang ?? null;
     globalNitroState.baseUrl = baseUrl ?? null;
     globalNitroState.components = components ?? {};
@@ -210,7 +213,7 @@ export function NitroDebugInfo({ config }: { config: ConfigResponse }) {
     const version = readEnv("VERSION", "");
 
     // Get token from configuration and determine type
-    const tokenValue = state.configuration?.apiKey || "";
+    const tokenValue = state.accessToken || "";
     const token = typeof tokenValue === "string" ? tokenValue : "";
     const tokenType = token.startsWith("p-")
       ? "production"
