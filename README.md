@@ -237,7 +237,35 @@ export default function MyComponent({ block }) {
 
 The component will use your custom `CustomImage` component for all `image` nodes, and render all other nodes using the default WYSIWYG renderer.
 
-### 8. Nested Blocks (Slots)
+### 8. Image Optimization with Flyo CDN
+
+The `flyoCdnLoader` function provides automatic image optimization through Flyo's CDN. Use it with Next.js Image component for optimized image delivery with automatic format conversion and resizing.
+
+```tsx
+'use client';
+
+import Image from 'next/image';
+import { flyoCdnLoader } from '@flyo/nitro-next/client';
+
+export default function MyComponent({ block }) {
+  return (
+    <Image
+      loader={flyoCdnLoader}
+      src={block.content.image.source}
+      alt={block.content.image.caption}
+      width={800}
+      height={600}
+    />
+  );
+}
+```
+
+The loader automatically:
+- Adds the Flyo CDN host (`storage.flyo.cloud`) if not already present
+- Applies width-based transformations
+- Converts images to WebP format for optimal performance
+
+### 9. Nested Blocks (Slots)
 
 When blocks contain nested blocks in slots, use the `NitroSlot` component to recursively render them. This is useful for container-like components that can hold other blocks.
 
@@ -263,7 +291,7 @@ The `NitroSlot` component automatically handles:
 - Recursively rendering each block using `NitroBlock`
 - Supporting unlimited nesting depth
 
-### 9. Entity Detail Pages
+### 10. Entity Detail Pages
 
 Nitro provides flexible helpers for creating entity detail pages with any route structure. You define a **resolver function** that fetches the entity from your route params, and the library handles caching and rendering.
 
@@ -411,7 +439,7 @@ export default function Product(props: RouteParams) {
 
 This pattern works with any route structure: `[slug]`, `[id]`, `[uniqueid]`, `[whatever]` - you control the resolution logic!
 
-### 10. Sitemap Generation
+### 11. Sitemap Generation
 
 Nitro provides a helper function to automatically generate a Next.js sitemap from your Flyo CMS content. The sitemap includes all pages and mapped entities.
 
@@ -477,6 +505,10 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
 - **`FlyoWysiwyg`** – Renders Flyo ProseMirror/TipTap JSON with optional overrides for individual node types.
   ```tsx
   import { FlyoWysiwyg } from '@flyo/nitro-next/client';
+  ```
+- **`flyoCdnLoader`** – Image loader for Next.js Image component that optimizes images through Flyo CDN with automatic format conversion and resizing.
+  ```tsx
+  import { flyoCdnLoader } from '@flyo/nitro-next/client';
   ```
 
 ### Server Exports

@@ -26,3 +26,6 @@ export {
 
 // Re-export types from Flyo SDK for convenience
 export type { Entity, Block, Page } from '@flyo/nitro-typescript';
+
+// Re-export client utilities for convenience
+export { flyoCdnLoader } from './client';

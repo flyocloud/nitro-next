@@ -3,6 +3,9 @@
 import { useEffect } from 'react';
 import { highlightAndClick, wysiwyg, reload} from '@flyo/nitro-js-bridge';
 import { Block } from "@flyo/nitro-typescript";
+import type { ImageLoaderProps } from 'next/image';
+
+const FLYO_CDN_HOST = 'storage.flyo.cloud';
 
 /**
  * Type for WYSIWYG node structure
@@ -137,4 +140,37 @@ export function FlyoWysiwyg({
       })}
     </>
   );
+}
+
+/**
+ * Image loader for Flyo CDN that automatically handles image transformations.
+ * Adds Flyo CDN host if not already present and applies width transformations.
+ * 
+ * @param src - The image source URL (relative or absolute)
+ * @param width - The desired width for the image
+ * @returns Transformed image URL with Flyo CDN parameters
+ * 
+ * @example
+ * ```tsx
+ * <Image
+ *   loader={flyoCdnLoader}
+ *   src="me.png"
+ *   alt="Picture"
+ *   width={500}
+ *   height={500}
+ * />
+ * ```
+ */
+export function flyoCdnLoader({ src, width }: ImageLoaderProps): string {
+  let imageUrl = src;
+
+  // If src doesn't contain the Flyo CDN host, prefix it
+  if (!src.includes(FLYO_CDN_HOST)) {
+    // Remove leading slash if present to avoid double slashes
+    const cleanSrc = src.startsWith('/') ? src.slice(1) : src;
+    imageUrl = `https://${FLYO_CDN_HOST}/${cleanSrc}`;
+  }
+
+  // Append Flyo CDN transformation parameters
+  return `${imageUrl}/thumb/${width}xnull?format=webp`;
 }
