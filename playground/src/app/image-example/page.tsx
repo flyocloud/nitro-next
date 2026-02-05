@@ -1,5 +1,5 @@
 import Image from 'next/image';
-import { flyoCdnLoader } from '@flyo/nitro-next/client';
+import { FlyoCdnLoader } from '@flyo/nitro-next/client';
 
 export default function ImageExamplePage() {
   return (
@@ -9,7 +9,7 @@ export default function ImageExamplePage() {
       <div style={{ marginTop: '2rem' }}>
         <h2>Example with relative path (will be prefixed with storage.flyo.cloud)</h2>
         <Image
-          loader={flyoCdnLoader}
+          loader={FlyoCdnLoader}
           src="me.png"
           alt="Picture of the author"
           width={500}
@@ -20,7 +20,7 @@ export default function ImageExamplePage() {
       <div style={{ marginTop: '2rem' }}>
         <h2>Example with full Flyo URL (will not be prefixed)</h2>
         <Image
-          loader={flyoCdnLoader}
+          loader={FlyoCdnLoader}
           src="https://storage.flyo.cloud/lowe_a8173f2a.jpg"
           alt="Example image"
           width={800}

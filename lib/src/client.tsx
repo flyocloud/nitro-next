@@ -158,7 +158,7 @@ export function FlyoWysiwyg({
  * @example
  * ```tsx
  * <Image
- *   loader={flyoCdnLoader}
+ *   loader={FlyoCdnLoader}
  *   src="me.png"
  *   alt="Picture"
  *   width={500}
@@ -166,7 +166,7 @@ export function FlyoWysiwyg({
  * />
  * ```
  */
-export function flyoCdnLoader({ src, width }: ImageLoaderProps): string {
+export function FlyoCdnLoader({ src, width }: ImageLoaderProps): string {
   let imageUrl = src;
 
   // If src doesn't contain the Flyo CDN host, prefix it

@@ -255,18 +255,18 @@ The component will use your custom `CustomImage` component for all `image` nodes
 
 ### 8. Image Optimization with Flyo CDN
 
-The `flyoCdnLoader` function provides automatic image optimization through Flyo's CDN. Use it with Next.js Image component for optimized image delivery with automatic format conversion and resizing.
+The `FlyoCdnLoader` function provides automatic image optimization through Flyo's CDN. Use it with Next.js Image component for optimized image delivery with automatic format conversion and resizing.
 
 ```tsx
 'use client';
 
 import Image from 'next/image';
-import { flyoCdnLoader } from '@flyo/nitro-next/client';
+import { FlyoCdnLoader } from '@flyo/nitro-next/client';
 
 export default function MyComponent({ block }) {
   return (
     <Image
-      loader={flyoCdnLoader}
+      loader={FlyoCdnLoader}
       src={block.content.image.source}
       alt={block.content.image.caption}
       width={800}
@@ -524,9 +524,9 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
   ```tsx
   import { FlyoWysiwyg } from '@flyo/nitro-next/client';
   ```
-- **`flyoCdnLoader`** – Image loader for Next.js Image component that optimizes images through Flyo CDN with automatic format conversion and resizing.
+- **`FlyoCdnLoader`** – Image loader for Next.js Image component that optimizes images through Flyo CDN with automatic format conversion and resizing.
   ```tsx
-  import { flyoCdnLoader } from '@flyo/nitro-next/client';
+  import { FlyoCdnLoader } from '@flyo/nitro-next/client';
   ```
 - **`FlyoMetric`** – Component for tracking entity metrics in production. Automatically sends a metric tracking request to the Flyo API when in production environment and the entity has a metric API URL configured.
   ```tsx
