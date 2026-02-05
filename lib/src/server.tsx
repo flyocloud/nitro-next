@@ -413,20 +413,23 @@ export async function nitroPageGenerateMetadata(
   const description = meta?.description ?? '';
   const image = meta?.image ?? '';
 
+  const ogImage = image ? `${image}/thumb/1200x630?format=jpg` : undefined;
+  const twImage = image ? `${image}/thumb/1200x600?format=jpg` : undefined;
+
   return {
     title,
     description,
     openGraph: {
       title,
       description,
-      images: image ? [image] : [],
+      images: ogImage ? [ogImage] : [],
       type: 'website',
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: image ? [image] : [],
+      images: twImage ? [twImage] : [],
     },
   };
 }
@@ -542,20 +545,23 @@ export async function nitroEntityGenerateMetadata<T = any>(
   const description = entity.entity?.entity_teaser ?? '';
   const image = entity.entity?.entity_image ?? '';
 
+  const ogImage = image ? `${image}/thumb/1200x630?format=jpg` : undefined;
+  const twImage = image ? `${image}/thumb/1200x600?format=jpg` : undefined;
+
   return {
     title,
     description,
     openGraph: {
       title,
       description,
-      images: image ? [image] : [],
+      images: ogImage ? [ogImage] : [],
       type: 'website',
     },
     twitter: {
       card: 'summary_large_image',
       title,
       description,
-      images: image ? [image] : [],
+      images: twImage ? [twImage] : [],
     },
   };
 }
