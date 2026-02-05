@@ -4,6 +4,7 @@ import {
     getNitroEntities,
     type EntityResolver
 } from "@flyo/nitro-next/server";
+import { FlyoMetric } from "@flyo/nitro-next/client";
 import type { Entity } from "@flyo/nitro-typescript";
 
 type RouteParams = {
@@ -27,6 +28,7 @@ export default function Page(props: RouteParams) {
         resolver,
         render: (entity: Entity) => (
             <div>
+                <FlyoMetric entity={entity} />
                 <h1>{entity.entity?.entity_title}</h1>
                 <p>{entity.entity?.entity_teaser}</p>
                 <pre>{JSON.stringify(entity, null, 2)}</pre>

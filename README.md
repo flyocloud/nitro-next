@@ -322,7 +322,7 @@ import {
   getNitroEntities,
   type EntityResolver
 } from "@flyo/nitro-next/server";
-
+import { FlyoMetric } from "@flyo/nitro-next/client";
 import type { Entity } from "@flyo/nitro-typescript";
 
 type RouteParams = {
@@ -347,14 +347,14 @@ export default function BlogPost(props: RouteParams) {
   return nitroEntityRoute(props, {
     resolver,
     render: (entity: Entity) => (
-
-      return (
-          <article>
-            <h1>{entity.entity?.entity_title}</h1>
-            <p>{entity.entity?.entity_teaser}</p>
-            {/* Access all entity data here */}
-          </article>
-      );
+      <>
+        <FlyoMetric entity={entity} />
+        <article>
+          <h1>{entity.entity?.entity_title}</h1>
+          <p>{entity.entity?.entity_teaser}</p>
+          {/* Access all entity data here */}
+        </article>
+      </>
     )
   });
 }
@@ -372,6 +372,7 @@ import {
   type Entity,
   type EntityResolver
 } from "@flyo/nitro-next/server";
+import { FlyoMetric } from "@flyo/nitro-next/client";
 
 type RouteParams = {
   params: Promise<{ uniqueid: string }>;
@@ -389,12 +390,12 @@ export default function Item(props: RouteParams) {
   return nitroEntityRoute(props, {
     resolver,
     render: (entity: Entity) => (
-
-      return (
+      <>
+        <FlyoMetric entity={entity} />
         <div>
           <h1>{entity.entity?.entity_title}</h1>
         </div>
-      )
+      </>
     )
   });
 }
@@ -412,6 +413,7 @@ import {
   type Entity,
   type EntityResolver
 } from "@flyo/nitro-next/server";
+import { FlyoMetric } from "@flyo/nitro-next/client";
 
 type RouteParams = {
   params: Promise<{ id: string }>;
@@ -433,13 +435,13 @@ export default function Product(props: RouteParams) {
   return nitroEntityRoute(props, {
     resolver,
     render: (entity: Entity) => (
-
-      return (
+      <>
+        <FlyoMetric entity={entity} />
         <div>
           <h1>{entity.entity?.entity_title}</h1>
           <p>{entity.entity?.entity_teaser}</p>
         </div>
-      )
+      </>
     )
   });
 }
@@ -525,6 +527,14 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
 - **`flyoCdnLoader`** – Image loader for Next.js Image component that optimizes images through Flyo CDN with automatic format conversion and resizing.
   ```tsx
   import { flyoCdnLoader } from '@flyo/nitro-next/client';
+  ```
+- **`FlyoMetric`** – Component for tracking entity metrics in production. Automatically sends a metric tracking request to the Flyo API when in production environment and the entity has a metric API URL configured.
+  ```tsx
+  import { FlyoMetric } from '@flyo/nitro-next/client';
+  ```
+- **`isProd`** – Constant that checks if the current environment is production (`process.env.NODE_ENV === 'production'`).
+  ```tsx
+  import { isProd } from '@flyo/nitro-next/client';
   ```
 
 ### Server Exports

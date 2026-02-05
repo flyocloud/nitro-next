@@ -29,4 +29,6 @@ export {
 export type { Entity, Block, Page, ConfigResponse } from '@flyo/nitro-typescript';
 
 // Re-export client utilities for convenience
+// Note: Other client exports like FlyoMetric, FlyoWysiwyg, FlyoClientWrapper, editable, isProd
+// are available via '@flyo/nitro-next/client'
 export { flyoCdnLoader } from './client';

@@ -2,10 +2,15 @@
 
 import { useEffect } from 'react';
 import { highlightAndClick, wysiwyg, reload} from '@flyo/nitro-js-bridge';
-import { Block } from "@flyo/nitro-typescript";
+import { Block, Entity } from "@flyo/nitro-typescript";
 import type { ImageLoaderProps } from 'next/image';
 
 const FLYO_CDN_HOST = 'storage.flyo.cloud';
+
+/**
+ * Check if running in production environment
+ */
+export const isProd = process.env.NODE_ENV === 'production';
 
 /**
  * Type for WYSIWYG node structure
@@ -173,4 +178,44 @@ export function flyoCdnLoader({ src, width }: ImageLoaderProps): string {
 
   // Append Flyo CDN transformation parameters
   return `${imageUrl}/thumb/${width}xnull?format=webp`;
+}
+
+/**
+ * FlyoMetric component for tracking entity metrics in production
+ * 
+ * Automatically sends a metric tracking request to the Flyo API when:
+ * - The environment is production (NODE_ENV === 'production')
+ * - The entity has a metric API URL configured
+ * 
+ * @param entity - The entity object containing entity_metric.api
+ * 
+ * @example
+ * ```tsx
+ * import { FlyoMetric } from '@flyo/nitro-next/client';
+ * 
+ * export default function BlogPost(props: RouteParams) {
+ *   return nitroEntityRoute(props, {
+ *     resolver,
+ *     render: (entity: Entity) => (
+ *       <>
+ *         <FlyoMetric entity={entity} />
+ *         <article>
+ *           <h1>{entity.entity?.entity_title}</h1>
+ *         </article>
+ *       </>
+ *     )
+ *   });
+ * }
+ * ```
+ */
+export function FlyoMetric({ entity }: { entity: Entity }) {
+  useEffect(() => {
+    // Only track metrics in production and if API URL is available
+    if (isProd && entity?.entity?.entity_metric?.api) {
+      fetch(entity.entity.entity_metric.api);
+    }
+  }, [entity]);
+
+  // This component doesn't render anything
+  return null;
 }
