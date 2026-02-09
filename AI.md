@@ -21,6 +21,7 @@
 13. [Image Optimization](#13-image-optimization)
 14. [API Reference Summary](#14-api-reference-summary)
 15. [Common Mistakes to Avoid](#15-common-mistakes-to-avoid)
+16. [Bolt.new / StackBlitz Deployment](#16-boltnew--stackblitz-deployment)
 
 ---
 
@@ -593,6 +594,157 @@ import { FlyoCdnLoader } from '@flyo/nitro-next/client';
 10. **Not wrapping layout with `<Flyo>`**: Root layout must use the `<Flyo>` wrapper.
 11. **Hardcoding navigation**: Use `config.containers` dynamically.
 12. **Creating multiple page routes**: Only ONE catch-all `[[...slug]]/page.tsx`. No separate routes for CMS pages.
+
+---
+
+## 16. Bolt.new / StackBlitz Deployment
+
+> **Bolt.new** and **StackBlitz** run Node.js inside the browser using **WebContainers** (a WASM-based runtime). This causes specific compatibility issues with Next.js 16 that must be addressed.
+
+### Problem: Turbopack WASM Bindings
+
+Next.js 16 enables **Turbopack** by default for `next dev` and `next build`. Turbopack relies on native SWC binaries (`turbo.createProject`), which **do not work** in WebContainer environments. You will see:
+
+```
+Error: `turbo.createProject` is not supported by the wasm bindings.
+```
+
+**Fix**: Use the `--webpack` flag to bypass Turbopack entirely.
+
+### Problem: Peer Dependency Conflicts with React 19
+
+Many popular npm packages (e.g., `next-themes@0.3.x`, `react-day-picker@8.x`) declare `peerDependencies` that only allow React 16–18. Since `@flyo/nitro-next` requires **React >= 19.2.1**, `npm install` will fail with `ERESOLVE unable to resolve dependency tree`.
+
+**Fix**: Create an `.npmrc` file and/or use compatible package versions.
+
+### Problem: `@next/swc-wasm-nodejs`
+
+Bolt.new may auto-install `@next/swc-wasm-nodejs` (often an outdated version like `13.x`) which conflicts with Next.js 16. **Never add this package manually.**
+
+---
+
+### Required Configuration for Bolt.new
+
+#### A) `package.json` Scripts — Use `--webpack` Flag
+
+```json
+{
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "start": "next start",
+    "lint": "next lint"
+  }
+}
+```
+
+> **CRITICAL**: The `--webpack` flag tells Next.js to use Webpack instead of Turbopack. This is the **only** way to run Next.js 16 in WebContainer environments (Bolt.new, StackBlitz). Without it, the app will crash immediately.
+
+#### B) `.npmrc` — Fix Peer Dependency Resolution
+
+Create `.npmrc` in the project root:
+
+```
+legacy-peer-deps=true
+```
+
+This allows npm to install packages even when their `peerDependencies` don't explicitly list React 19. Without this file, `npm install` will fail.
+
+#### C) `next.config.js` — Required Image Config
+
+```js
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**.flyo.cloud',
+      },
+      {
+        protocol: 'https',
+        hostname: 'storage.googleapis.com',
+      },
+    ],
+  },
+};
+
+module.exports = nextConfig;
+```
+
+#### D) Do NOT Install These Packages
+
+- `@next/swc-wasm-nodejs` — Conflicts with Next.js 16. Remove if already present.
+- `@next/swc-wasm-wasm32` — Same issue.
+
+If you see these in `package.json`, remove them:
+
+```bash
+npm uninstall @next/swc-wasm-nodejs @next/swc-wasm-wasm32
+```
+
+#### E) Third-Party Package Compatibility
+
+When using React 19 in Bolt.new, prefer package versions that support React 19. Common fixes:
+
+| Package | Problematic Version | Fix |
+|---------|-------------------|-----|
+| `next-themes` | `0.3.x` (peer: React 16–18) | Use `next-themes@^0.4.4` |
+| `react-day-picker` | `8.x` (peer: React 16–18) | Use `react-day-picker@^9.0.0` or rely on `.npmrc` |
+| `@radix-ui/*` | Old versions | Use latest versions (most now support React 19) |
+
+#### F) Minimal `package.json` for Bolt.new
+
+Use the **minimum dependencies** needed. Avoid adding unnecessary packages. Here is a clean starting point:
+
+```json
+{
+  "name": "flyo-nextjs",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@flyo/nitro-next": "^1.8.0",
+    "next": "^16.0.4",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/react": "^19.2.1",
+    "@types/react-dom": "^19.2.1",
+    "typescript": "^5.3.0"
+  }
+}
+```
+
+Add additional packages (Tailwind CSS, Radix UI, etc.) only as needed, and confirm they support React 19 before adding.
+
+### Bolt.new Checklist
+
+- [ ] `.npmrc` with `legacy-peer-deps=true` exists in project root
+- [ ] `package.json` scripts use `--webpack` flag for `dev` and `build`
+- [ ] `@next/swc-wasm-nodejs` is **NOT** in `package.json`
+- [ ] `next-themes` version is `^0.4.4` (not `0.3.x`) if used
+- [ ] `next.config.js` has `images.remotePatterns` for `**.flyo.cloud`
+- [ ] Keep dependencies minimal — only add what you need
+- [ ] After `npm install` errors, run `npm install --legacy-peer-deps`
+
+### Bolt.new Prompt Tip
+
+When prompting Bolt.new, prepend this to your instructions:
+
+> **Important constraints for this project:**
+> 1. Use `next dev --webpack` and `next build --webpack` in package.json scripts (Turbopack does not work in WebContainers).
+> 2. Create an `.npmrc` file with `legacy-peer-deps=true` in the project root.
+> 3. Do NOT install `@next/swc-wasm-nodejs` or `@next/swc-wasm-wasm32`.
+> 4. Use `next-themes@^0.4.4` (not 0.3.x) if dark mode theming is needed.
+> 5. Keep dependencies minimal. Verify React 19 compatibility before adding packages.
 
 ---
 
