@@ -187,6 +187,8 @@ export function HeroBanner({ block }: { block: Block }) {
 
 The `editable()` helper function marks the component as editable in the Flyo CMS live editor. It spreads the necessary data attributes onto your component's root element to enable in-place editing.
 
+> **Important:** `editable()` is a **client-only** function. Any component that uses `editable()` **must** have `'use client'` as the very first line of the file. Using it in a server component will cause a runtime error.
+
 ### 7. WYSIWYG Component
 
 The `FlyoWysiwyg` component renders ProseMirror/TipTap JSON content. It handles standard nodes automatically and allows you to provide custom components for specific node types.
@@ -514,7 +516,7 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
 
 ### Client Exports
 
-- **`editable(block)`** – Returns the `data-flyo-uid` attributes to wire blocks into the Flyo live editor.
+- **`editable(block)`** – Returns the `data-flyo-uid` attributes to wire blocks into the Flyo live editor. **Client-only** — must be used in components with the `'use client'` directive.
   ```tsx
   import { editable } from '@flyo/nitro-next/client';
   ```

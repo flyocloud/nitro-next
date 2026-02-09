@@ -80,7 +80,13 @@ INSERT_YOUR_CONFIG_RESPONSE_HERE
 
 Fetch from: `https://api.flyo.cloud/nitro/v1/openapi/schemas?token=YOUR_TOKEN`
 
-This endpoint returns an **OpenAPI 3.0 specification** with typed schemas for all block definitions and entity models specific to this project. The schemas tell you exactly:
+This endpoint returns an **OpenAPI 3.0 specification** with typed schemas for all block definitions and entity models specific to this project.
+
+```json
+INSERT_YOUR_OPENAPI_SCHEMAS_RESPONSE_HERE
+```
+
+The schemas tell you exactly:
 
 - **Which block components exist** — schemas named `Block{ComponentName}` (e.g., `BlockHeroBanner`, `BlockText`)
 - **What content fields each block has** — the `content` property with typed sub-properties
@@ -111,116 +117,6 @@ EntityName:
 ```
 
 > **Key**: If a property section only has `_empty: boolean`, it means that section is unused for that block.
-
----
-
-## Example: Reading the Zoo Playground Data
-
-**Example Config Response:**
-```json
-{
-  "nitro": {"domain": "flyo.zoo", "slug": "flyo-zoo", "version": 111, "primary_language": "de", "language": "de"},
-  "pages": ["", "news", "tiere-in-unserem-zoo", "events-im-zoo", "essen-and-trinken"],
-  "containers": {
-    "nav": {
-      "identifier": "nav",
-      "label": "Navigation",
-      "items": [
-        {"type": "page", "target": "_self", "label": "Startseite", "href": "/", "slug": ""},
-        {"type": "page", "target": "_self", "label": "News aus dem Zoo", "href": "/news", "slug": "news"},
-        {"type": "page", "target": "_self", "label": "Tiere im Zoo", "href": "/tiere-in-unserem-zoo", "slug": "tiere-in-unserem-zoo"},
-        {"type": "page", "target": "_self", "label": "Events im Zoo", "href": "/events-im-zoo", "slug": "events-im-zoo"},
-        {"type": "page", "target": "_self", "label": "Essen & Trinken", "href": "/essen-and-trinken", "slug": "essen-and-trinken"}
-      ]
-    }
-  },
-  "globals": {}
-}
-```
-
-**What we learn**: One flat `"nav"` container with 5 items, language `"de"`, 5 pages.
-
-**Example OpenAPI Schemas (abbreviated):**
-```json
-{
-  "openapi": "3.0.3",
-  "components": {
-    "schemas": {
-      "EntityTiere": {
-        "title": "Tiere",
-        "type": "object",
-        "properties": {
-          "long_text": {"title": "long_text", "type": "string"}
-        },
-        "description": "Entity model for \"Tiere\" (Schema ID: 172)."
-      },
-      "BlockHeroBanner": {
-        "title": "Hero Section",
-        "properties": {
-          "component": {"enum": ["HeroBanner"]},
-          "content": {
-            "properties": {
-              "image": {"type": "object", "properties": {"source": {"type": "string"}, "caption": {"type": "string"}, "copyright": {"type": "string"}}},
-              "title": {"type": "string"},
-              "teaser": {"type": "string"}
-            }
-          },
-          "config": {"properties": {"_empty": {"type": "boolean"}}},
-          "items": {"type": "array", "items": {"type": "object"}},
-          "slots": {"properties": {"_empty": {"type": "boolean"}}}
-        }
-      },
-      "BlockText": {
-        "title": "Statischer Text",
-        "properties": {
-          "component": {"enum": ["Text"]},
-          "content": {
-            "properties": {
-              "content": {"type": "object", "properties": {
-                "html": {"type": "string"},
-                "json": {"type": "object", "description": "TipTap json annotation"}
-              }}
-            }
-          }
-        }
-      },
-      "BlockCardsGrid": {
-        "title": "Kacheln mit Inhalt",
-        "properties": {
-          "component": {"enum": ["CardsGrid"]},
-          "content": {"properties": {"_empty": {"type": "boolean"}}},
-          "items": {"type": "array", "items": {"type": "object", "properties": {
-            "title": {"type": "string"},
-            "teaser": {"type": "string"},
-            "image": {"type": "string"}
-          }}}
-        }
-      },
-      "BlockSlotContainer": {
-        "title": "SlotContainer",
-        "properties": {
-          "component": {"enum": ["SlotContainer"]},
-          "content": {"properties": {"_empty": {"type": "boolean"}}},
-          "slots": {"properties": {
-            "content": {"type": "object", "properties": {
-              "identifier": {"type": "string"},
-              "content": {"type": "array", "items": {"$ref": "#/components/schemas/block"}}
-            }}
-          }}
-        }
-      }
-    }
-  }
-}
-```
-
-**What we learn from these schemas:**
-- **4 block components needed**: `HeroBanner`, `Text`, `CardsGrid`, `SlotContainer` (from each `Block*` schema's `component` enum)
-- **1 entity model**: `EntityTiere` with a `long_text` field
-- `HeroBanner` has content fields: `image` (object with `source`, `caption`, `copyright`), `title`, `teaser`. No items, no slots.
-- `Text` has content field: `content` (object with `html` and `json` for WYSIWYG). No items, no slots.
-- `CardsGrid` has no content (`_empty`), but has `items` with `title`, `teaser`, `image` fields. This is a content pool block.
-- `SlotContainer` has no content, no items, but has a `slots.content` slot for nested blocks.
 
 ---
 
@@ -434,8 +330,10 @@ For each `Block*` schema in the OpenAPI response, create a React component. Ever
 
 ### General Pattern
 
+> **CRITICAL**: Every component that uses `editable()` **must** include `'use client'` as the very first line of the file. `editable()` is a client-only function imported from `@flyo/nitro-next/client` — using it in a server component will cause a runtime error. This is the single most common mistake when generating code with AI tools.
+
 ```tsx
-'use client';
+'use client'; // ← REQUIRED: editable() is client-only
 
 import { Block } from '@flyo/nitro-typescript';
 import { editable } from '@flyo/nitro-next/client';
@@ -450,7 +348,7 @@ export function ComponentName({ block }: { block: Block }) {
 ```
 
 **Rules:**
-- Components must be `'use client'` (they use `editable()`)
+- Components must be `'use client'` (they use `editable()`). **`editable()` is a client-only function** — it will fail if used in a server component without the `'use client'` directive at the top of the file.
 - Always spread `{...editable(block)}` on the root element for live editing
 - Access: `block.content.fieldName`, `block.items` (array), `block.config.fieldName`, `block.slots.slotName`
 - **Exception**: Components using `NitroSlot` must be **server components** (no `'use client'`, no `editable()`)
@@ -686,10 +584,10 @@ import { FlyoCdnLoader } from '@flyo/nitro-next/client';
 1. **Missing component registration**: Every `Block*` schema's `component` value must be registered in `initNitro({ components })`.
 2. **Wrong component key**: Keys must **exactly match** the `component` enum (case-sensitive). `"HeroBanner"` ≠ `"heroBanner"`.
 3. **Using Pages Router**: Only **App Router** (`app/` directory) is supported.
-4. **Forgetting `'use client'`**: Components using `editable()`, `FlyoWysiwyg`, `FlyoCdnLoader` must have `'use client'`.
+4. **Forgetting `'use client'`**: Components using `editable()`, `FlyoWysiwyg`, `FlyoCdnLoader` **must** have `'use client'` at the very top of the file. `editable()` is a client-only function and will break if used in a server component. This is the most common mistake made by AI code generators.
 5. **`NitroSlot` in client components**: `NitroSlot` is server-only. No `'use client'` on slot components.
 6. **`generateStaticParams` in development**: Disables live preview. Production only.
-7. **Forgetting `editable(block)`**: Always spread on root element for live editing.
+7. **Forgetting `editable(block)`**: Always spread on root element for live editing. Remember: `editable()` requires `'use client'`.
 8. **Wrong image structure**: Images are `{source, caption, copyright}` objects, not strings. Use `.source` for the URL.
 9. **Wrong WYSIWYG image src**: In WYSIWYG nodes, `node.attrs.src` is also `{source, caption, copyright}`. Use `.source`.
 10. **Not wrapping layout with `<Flyo>`**: Root layout must use the `<Flyo>` wrapper.
