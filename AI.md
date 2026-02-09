@@ -8,9 +8,7 @@
 >
 > 1. This is a **Next.js App Router** project. **Do NOT use Vite, Create React App, or any other framework.** Do NOT start from a Vite template.
 > 2. Requires **Next.js >= 16.0.4**, **React >= 19.2.1**, **React DOM >= 19.2.1**.
-> 3. **Always create `.npmrc`** in the project root with `legacy-peer-deps=true` as the very first file. Without it, `npm install` will fail due to React 19 peer dependency conflicts.
-> 4. Use **React 19-compatible** versions of all packages: `next-themes@^0.4.4` (not 0.3.x), `lucide-react@^0.460.0` (not 0.344.x), latest `@radix-ui/*`.
-> 5. **Bolt.new / StackBlitz / WebContainer users**: See [Section 16](#16-boltnew--stackblitz-deployment) — special version constraints apply (Next.js 16.x does NOT work in WebContainers).
+> 3. **Bolt.new / StackBlitz / WebContainer users**: See [Section 16](#16-boltnew--stackblitz-deployment) — special version and configuration constraints apply. **Next.js 16.x does NOT work in WebContainers.**
 
 ---
 
@@ -135,19 +133,15 @@ EntityName:
 
 > **DO NOT** use Vite, Create React App, or any starter template other than Next.js. This project uses the **Next.js App Router** exclusively.
 
-**Step 1**: Create `.npmrc` in the project root (must be done BEFORE `npm install`):
-
-```
-legacy-peer-deps=true
-```
-
-**Step 2**: Install dependencies:
+Install dependencies:
 
 ```bash
 npm install @flyo/nitro-next
 ```
 
 > **CRITICAL**: Requires **Next.js App Router** (`app/` directory, not `pages/`). Requires **Next.js >= 16.0.4**, **React >= 19.2.1**, **React DOM >= 19.2.1**.
+>
+> **Bolt.new / StackBlitz users**: You need additional setup steps. See [Section 16](#16-boltnew--stackblitz-deployment) **before** running `npm install`.
 
 ### Folder Structure
 
@@ -619,38 +613,23 @@ import { FlyoCdnLoader } from '@flyo/nitro-next/client';
 
 ## 16. Bolt.new / StackBlitz Deployment
 
-> **Bolt.new** and **StackBlitz** run Node.js inside the browser using **WebContainers** (a WASM-based runtime). **Next.js 16.x is completely incompatible with WebContainers.** You must use **Next.js 15.5.12** instead.
+> **Bolt.new** and **StackBlitz** run Node.js inside the browser using **WebContainers** (a WASM-based runtime). This environment has known limitations with Next.js.
 
-> **⚠️ THE SINGLE MOST IMPORTANT RULE FOR BOLT.NEW:**
->
-> Use **`next@15.5.12`** (exact version). **ALL Next.js 16.x versions will crash** in WebContainers with one of these fatal errors:
-> - `turbo.createProject is not supported by the wasm bindings` (Turbopack)
-> - `Invariant: Cannot access "entryCSSFiles" without a work store` (16.1.x + Webpack)
-> - `Invariant: Expected workUnitAsyncStorage to have a store` (16.0.x + Webpack)
->
-> There is **NO workaround** for 16.x. The WASM-based SWC bindings in WebContainers cannot maintain the async storage context that Next.js 16's server components require. **You MUST use 15.5.12.**
+### Known WebContainer Limitations
 
-### Why Next.js 16.x Fails in WebContainers
+`@flyo/nitro-next` requires **Next.js >= 16.0.4** (see `package.json` peerDependencies). However, as of February 2026, **Next.js 16.x has known crashes in WebContainers** due to WASM SWC binding limitations:
 
-| Next.js Version | Mode | Error | Fixable? |
-|-----------------|------|-------|----------|
-| 16.x (any) | Turbopack (default) | `turbo.createProject is not supported by the wasm bindings` | No |
-| 16.1.x+ | Webpack (`--webpack`) | `Cannot access "entryCSSFiles" without a work store` | No |
-| 16.0.x | Webpack (`--webpack`) | `Expected workUnitAsyncStorage to have a store` | No |
-| **15.5.12** | **Webpack (`--webpack`)** | **✅ Works** | **N/A** |
+| Next.js Version | Mode | Error |
+|-----------------|------|-------|
+| 16.x (any) | Turbopack (default) | `turbo.createProject is not supported by the wasm bindings` |
+| 16.1.x+ | Webpack (`--webpack`) | `Cannot access "entryCSSFiles" without a work store` |
+| 16.0.x | Webpack (`--webpack`) | `Expected workUnitAsyncStorage to have a store` |
 
-Next.js 16.x fundamentally changed its internal async storage architecture (`workUnitAsyncStorage`). The WASM SWC bindings (`@next/swc-wasm-nodejs`) that WebContainers use cannot properly maintain this async context, causing React's `cache()` function and server component rendering to fail. Next.js 15.5.x has a mature, stable WASM implementation that works correctly.
+Next.js 16.x changed its internal async storage architecture. The WASM SWC bindings (`@next/swc-wasm-nodejs`) that WebContainers use cannot properly maintain this async context, causing React's `cache()` function and server component rendering to fail.
 
-### Compatibility Note
+### Workaround: Use Next.js 15.5.12
 
-`@flyo/nitro-next` declares a peer dependency of `next >= 16.0.4`, but the library is **fully compatible with Next.js 15.5.x**. Both versions support:
-- App Router with `app/` directory
-- Async `params` (`params: Promise<{...}>`)
-- React 19 and React `cache()`
-- Server Components and Client Components
-- `next/navigation` (`notFound()`, etc.)
-
-The `.npmrc` file with `legacy-peer-deps=true` bypasses the peer dependency check, allowing `next@15.5.12` to install alongside `@flyo/nitro-next`.
+Until WebContainers support Next.js 16.x, use **`next@15.5.12`** (the latest 15.x backport) as a fallback. The library is API-compatible with 15.5.x (App Router, async params, React 19, server components). This requires `.npmrc` with `legacy-peer-deps=true` to bypass the peer dependency check.
 
 ---
 
@@ -664,11 +643,11 @@ Create `.npmrc` in the project root **before running `npm install`**:
 legacy-peer-deps=true
 ```
 
-Without this, `npm install` will fail because:
-- `@flyo/nitro-next` declares `peerDependencies: { next: ">=16.0.4" }` but you're installing `next@15.5.12`
+This is required because:
+- `@flyo/nitro-next` declares `peerDependencies: { next: ">=16.0.4" }` but you're installing `next@15.5.12` as a WebContainer workaround
 - Many packages don't yet declare React 19 in their `peerDependencies`
 
-#### B) `package.json` — Use Exact Versions and `--webpack` Flag
+#### B) `package.json`
 
 ```json
 {
@@ -696,12 +675,12 @@ Without this, `npm install` will fail because:
 }
 ```
 
-> **CRITICAL RULES:**
-> - `next` must be **exactly** `15.5.12` — no `^`, no `~`, no `>=`. Just `15.5.12`.
+> **Important:**
+> - `next` is pinned to `15.5.12` (no `^`) — this is a WebContainer workaround. In standard environments, use `next@>=16.0.4` as the package.json requires.
 > - `--webpack` flag is **required** in both `dev` and `build` scripts. Turbopack crashes in WebContainers.
-> - Do NOT use `next@16.x`, `next@^16.0.4`, or `next@latest`. They **will** crash.
+> - Do NOT install `@next/swc-wasm-nodejs` or `@next/swc-wasm-wasm32` — Next.js downloads the correct WASM bindings automatically.
 
-#### C) `next.config.js` — Required Image Config
+#### C) `next.config.js`
 
 ```js
 /** @type {import('next').NextConfig} */
@@ -723,20 +702,9 @@ const nextConfig = {
 module.exports = nextConfig;
 ```
 
-#### D) Do NOT Install These Packages
+#### D) Third-Party Package Compatibility
 
-- `@next/swc-wasm-nodejs` — Next.js downloads the correct WASM bindings automatically. Manually installing this (especially old versions like `13.x`) causes conflicts. Remove if present.
-- `@next/swc-wasm-wasm32` — Same issue.
-
-If you see these in `package.json`, remove them:
-
-```bash
-npm uninstall @next/swc-wasm-nodejs @next/swc-wasm-wasm32
-```
-
-#### E) Third-Party Package Compatibility
-
-When using React 19 in Bolt.new, prefer package versions that support React 19. Common fixes:
+Bolt.new's stricter peer dependency resolution means you **must** use React 19-compatible versions of all packages. In standard environments (local dev, Vercel), npm warnings are non-fatal, but in Bolt.new they cause hard failures.
 
 | Package | Problematic Version | Fix |
 |---------|-------------------|-----|
@@ -748,19 +716,17 @@ When using React 19 in Bolt.new, prefer package versions that support React 19. 
 ### Bolt.new Checklist
 
 - [ ] `.npmrc` with `legacy-peer-deps=true` exists in project root (created BEFORE `npm install`)
-- [ ] `next` version is **exactly `15.5.12`** (NOT `^16.0.4`, NOT `16.0.11`, NOT any 16.x)
+- [ ] `next` version is `15.5.12` (WebContainer workaround — standard environments should use `>=16.0.4`)
 - [ ] `package.json` scripts use `--webpack` flag for `dev` and `build`
-- [ ] `@next/swc-wasm-nodejs` is **NOT** in `package.json`
-- [ ] `@next/swc-wasm-wasm32` is **NOT** in `package.json`
+- [ ] `@next/swc-wasm-nodejs` and `@next/swc-wasm-wasm32` are **NOT** in `package.json`
 - [ ] `next-themes` version is `^0.4.4` (not `0.3.x`) if used
 - [ ] `next.config.js` has `images.remotePatterns` for `**.flyo.cloud`
-- [ ] Keep dependencies minimal — only add what you need
 
 ### Troubleshooting in Bolt.new
 
 **If you see ANY `Invariant` error** (entryCSSFiles, workUnitAsyncStorage, work store, etc.):
 
-Your Next.js version is 16.x. It **MUST** be downgraded to 15.5.12:
+Your Next.js version is 16.x, which crashes in WebContainers. Downgrade to 15.5.12:
 
 ```bash
 echo "legacy-peer-deps=true" > .npmrc
@@ -785,7 +751,7 @@ Ensure your `package.json` scripts include `--webpack`:
 "build": "next build --webpack"
 ```
 
-**Complete reset** — if nothing else works:
+**Complete reset:**
 
 ```bash
 echo "legacy-peer-deps=true" > .npmrc
