@@ -4,116 +4,69 @@
 
 ---
 
-> **⚠️ CRITICAL CONSTRAINTS — READ ENTIRELY BEFORE GENERATING ANY CODE:**
+> **STOP — READ THESE RULES BEFORE GENERATING ANY CODE:**
 >
-> 1. This is a **Next.js App Router** project. **Do NOT use Vite, Create React App, or any other framework.** Do NOT start from a Vite template. Do NOT create `vite.config.*`, root `index.html`, or Vite scripts.
-> 2. Bolt.new / StackBlitz use **WebContainers** (WASM-based Node.js in the browser). Native SWC binaries cannot load, so Next.js falls back to WASM SWC bindings. **You MUST apply these four mitigations to make Next.js work in this environment:** (a) create a `.babelrc` with `{"presets":["next/babel"]}` to force Babel transforms instead of SWC, (b) use `--webpack` flag in all `dev` and `build` scripts to avoid Turbopack, (c) never use `next/font/*` (use `<link>` tags for Google Fonts instead), and (d) never install `@next/swc-wasm-nodejs` or `@next/swc-wasm-wasm32` manually.
-> 3. **Webpack mode is mandatory** — add `--webpack` to both `dev` and `build` scripts. Turbopack crashes in WASM environments.
-> 4. **Babel transforms are mandatory** — create `.babelrc` with `{"presets":["next/babel"]}` **before running `npm install`**. This forces JavaScript-based Babel transforms and avoids SWC transform code paths that fail in WebContainers.
-> 5. **`next/font/*` is prohibited** — `next/font/google` and `next/font/local` rely on SWC and will break builds when Babel is enabled. Use `<link>` tags for Google Fonts instead.
-> 6. **No ESLint/linting packages in the base template** — they introduce peer dependency conflicts that cause `npm install` failures.
-> 7. **Minimal dependencies only** — avoid UI libraries with React 18-only peer ranges. Add them later once the project is stable.
-> 8. Create **all config files before running `npm install`** — `.babelrc`, `tsconfig.json`, `next.config.js` must exist first to reduce failure modes.
+> 1. This is a **Next.js App Router** project. **Do NOT use Vite, Create React App, or any other framework.** Never create `vite.config.*`, root `index.html`, or Vite scripts.
+> 2. **Next.js version MUST be `^16.0.4` or higher.** The `@flyo/nitro-next` package has `peerDependencies: { "next": ">=16.0.4" }`. Using any older version (13, 14, 15) will cause ERESOLVE install failures and broken imports.
+> 3. **Always create `.npmrc` with `legacy-peer-deps=true` BEFORE running `npm install`.** WebContainers have strict npm resolution that causes peer dependency conflicts without this.
+> 4. **Do NOT create a `.babelrc` file.** Babel transforms are NOT needed for Next.js 16+. Creating `.babelrc` disables SWC and causes hundreds of webpack cache resolution errors.
+> 5. **Do NOT use `--webpack` flag** in dev or build scripts. Plain `next dev` and `next build` are correct for Next.js 16+.
+> 6. **Do NOT use `next/font/google` or `next/font/local`.** These may fail in WebContainer WASM environments. Use `<link>` tags for Google Fonts instead.
+> 7. **No ESLint/linting packages** — they introduce peer dependency conflicts in WebContainers.
+> 8. **Create ALL config files BEFORE running `npm install`** — `.npmrc`, `tsconfig.json`, `next.config.js`, `package.json` must exist first.
+> 9. **Do NOT use `lucide-react`, `@radix-ui/*`, `tailwindcss`, or any UI library** unless the user explicitly requests it. Keep dependencies minimal to avoid install failures.
+> 10. **Always use subpath imports.** The valid import paths are: `@flyo/nitro-next/server`, `@flyo/nitro-next/client`, and `@flyo/nitro-next/proxy`. Never use a bare `@flyo/nitro-next` import.
 
 ---
 
 ## Table of Contents
 
-1. [WebContainer Environment & Root Cause](#1-webcontainer-environment--root-cause)
+1. [WebContainer Constraints](#1-webcontainer-constraints)
 2. [Architecture Overview](#2-architecture-overview)
 3. [Prerequisites & User-Provided Data](#3-prerequisites--user-provided-data)
 4. [Bootstrapping Order](#4-bootstrapping-order)
-5. [Required Config Files (Create BEFORE Install)](#5-required-config-files-create-before-install)
+5. [Required Config Files](#5-required-config-files)
 6. [Package.json & Dependencies](#6-packagejson--dependencies)
 7. [Environment Variables](#7-environment-variables)
 8. [Flyo Configuration File](#8-flyo-configuration-file)
-9. [Middleware Proxy](#9-middleware-proxy)
+9. [Proxy (Cache Control Middleware)](#9-proxy-cache-control-middleware)
 10. [Root Layout with Navigation](#10-root-layout-with-navigation)
 11. [Catch-All Page Route](#11-catch-all-page-route)
 12. [Building Block Components](#12-building-block-components)
 13. [Entity Detail Pages](#13-entity-detail-pages)
-14. [Not Found Page](#14-not-found-page)
-15. [Sitemap Generation](#15-sitemap-generation)
-16. [Image Optimization](#16-image-optimization)
-17. [API Reference Summary](#17-api-reference-summary)
-18. [Prohibited Patterns](#18-prohibited-patterns)
-19. [Common Mistakes to Avoid](#19-common-mistakes-to-avoid)
-20. [Troubleshooting](#20-troubleshooting)
-21. [Validation Checklist](#21-validation-checklist)
+14. [Verified Exports Reference](#14-verified-exports-reference)
+15. [Prohibited Patterns](#15-prohibited-patterns)
+16. [Troubleshooting](#16-troubleshooting)
 
 ---
 
-## 1. WebContainer Environment & Root Cause
+## 1. WebContainer Constraints
 
-### Why Bolt/StackBlitz Requires Special Handling
+Bolt.new and StackBlitz run Node.js in the browser using **WebContainers** (WASM-based). Key constraints:
 
-Bolt.new and StackBlitz run Node.js in the browser using **WebContainers** — a WASM-based runtime. In this environment:
+- Native SWC binaries cannot load — Next.js falls back to WASM SWC bindings automatically. This is expected.
+- npm peer dependency resolution is stricter — `.npmrc` with `legacy-peer-deps=true` is mandatory.
+- `next/font/*` may fail under WASM — use `<link>` tags instead.
 
-- **Native SWC binaries cannot load.** Next.js automatically falls back to WASM bindings (`@next/swc-wasm-nodejs`).
-- **The WASM SWC fallback is the root cause of most issues.** It can cause crashes in SWC transform code paths and Turbopack.
-
-**What you MUST do about it:** Force Babel transforms (`.babelrc`), force Webpack mode (`--webpack`), and avoid `next/font/*`. These mitigations bypass the broken SWC/Turbopack code paths. See the [Mitigation Strategy](#mitigation-strategy) below for the full list.
-
-### How to Verify You're in WASM Fallback Mode
-
-Check your dev server output for these lines:
-
-```
-Downloading swc package @next/swc-wasm-nodejs...
-```
-```
-we're using WASM bindings
-```
-
-If you see these, the WASM fallback is active. This is expected in WebContainers and cannot be avoided — the mitigations in this document work around it.
-
-### Symptoms of WASM-Related Failures
-
-| Symptom | Cause |
-|---------|-------|
-| `turbo.createProject is not supported by the wasm bindings` | Turbopack cannot run in WASM mode |
-| `Invariant: Cannot access "entryCSSFiles" without a work store` | WASM SWC async context issue — apply Babel + Webpack mitigations |
-| `Expected workUnitAsyncStorage to have a store` | Same root cause — apply Babel + Webpack mitigations |
-| Preview returns 500 on `/` with invariant errors | Server component rendering fails under WASM |
-| `npm install` fails with ERESOLVE | Peer dependency conflicts (React 19, strict resolution) |
-| Build errors referencing font loader or SWC | `next/font/*` requires SWC, conflict with Babel |
-| Publish runs `npx vite build` instead of `next build` | Bolt misidentified the project as Vite |
-
-### Mitigation Strategy
-
-The following mitigations reduce reliance on SWC and avoid known crash paths:
-
-1. **Force Webpack mode** (`--webpack` in `dev` and `build` scripts) — avoids Turbopack WASM crash
-2. **Force Babel transforms** (create `.babelrc` with `{"presets":["next/babel"]}`) — bypasses SWC transform code paths
-3. **Prohibit `next/font/*`** — avoids SWC-dependent font loader that conflicts with Babel
-4. **Minimize dependencies** — reduces peer conflict surface and avoids React 18-only peer ranges
-
-> **Important**: Even with all mitigations, some edge-case invariants may persist due to fundamental WebContainer limitations around async context and server components. If issues persist after applying all mitigations, the same repo will likely work in a standard glibc environment (local dev, Docker, Vercel). Use Bolt primarily for scaffolding and deployment; consider local dev for debugging.
+**The correct approach for Next.js 16+ is to use the default build system (SWC + Turbopack) without any Babel overrides.** The WASM SWC fallback in Next.js 16 is stable enough for both dev and build.
 
 ---
 
 ## 2. Architecture Overview
 
-Flyo Nitro is a headless CMS delivering content through a REST API with three pillars:
+Flyo Nitro is a headless CMS delivering content through a REST API:
 
 - **Config** (`/config`): Navigation containers, available page slugs, global content pools.
 - **Pages** (`/pages?slug=...`): Page content by slug. Each page has a `json` array of **blocks** rendered by matching their `component` field to registered React components.
-- **Entities** (`/entities/slug/{slug}` or `/entities/uniqueid/{uniqueid}`): Standalone data objects (blog posts, products, etc.) with their own detail pages.
+- **Entities** (`/entities/slug/{slug}`): Standalone data objects (blog posts, products, etc.) with their own detail pages.
 
 ### How Pages Work
 
-Each block in the page's `json` array has:
-- `component`: React component name (e.g., `"HeroBanner"`, `"Text"`)
-- `content`: Content data for the component
-- `config`: Configuration/styling options
-- `items`: Mapped entity data (content pool items)
-- `slots`: Nested child blocks (for container components)
-- `identifier`: Block type identifier in the CMS
-- `uid`: Unique block ID (for live editing)
+Each block has: `component` (React component name), `content` (data), `config` (options), `items` (mapped entities), `slots` (nested blocks), `uid` (unique ID for live editing).
 
-The library iterates over `json` and renders the matching React component for each block. **You only need a single catch-all route `[[...slug]]/page.tsx`.**
+The library iterates over the page's `json` array and renders the matching React component. **You only need a single catch-all route `[[...slug]]/page.tsx`.**
 
-### Key Concept: Component Mapping
+### Component Mapping
 
 In `flyo.config.tsx`, you register a map of `component` name → React component. The key must **exactly match** the `component` string from the API (case-sensitive).
 
@@ -121,11 +74,7 @@ In `flyo.config.tsx`, you register a map of `component` name → React component
 
 ## 3. Prerequisites & User-Provided Data
 
-You need two pieces of data from the user, plus the auto-generated OpenAPI schemas.
-
 ### A) Flyo Access Token
-
-The API token for authenticating with the Flyo Nitro API.
 
 ```
 INSERT_YOUR_FLYO_ACCESS_TOKEN_HERE
@@ -135,10 +84,7 @@ INSERT_YOUR_FLYO_ACCESS_TOKEN_HERE
 
 Fetch from: `https://api.flyo.cloud/nitro/v1/config?token=YOUR_TOKEN`
 
-This provides:
-- **Navigation containers** (`containers` object): Each key (e.g., `"nav"`, `"footer"`) has `items` — page links with `label`, `href`, `slug`, `children`, `properties`.
-- **Available pages** (`pages` array): Valid slugs. Empty string `""` = homepage.
-- **Globals** (`globals` object): Site-wide content pool data.
+Provides: navigation containers (`containers`), available pages (`pages`), globals (`globals`).
 
 ```json
 INSERT_YOUR_CONFIG_RESPONSE_HERE
@@ -148,85 +94,49 @@ INSERT_YOUR_CONFIG_RESPONSE_HERE
 
 Fetch from: `https://api.flyo.cloud/nitro/v1/openapi/schemas?token=YOUR_TOKEN`
 
-This endpoint returns an **OpenAPI 3.0 specification** with typed schemas for all block definitions and entity models specific to this project.
+Returns typed schemas for all block definitions and entity models.
 
 ```json
 INSERT_YOUR_OPENAPI_SCHEMAS_RESPONSE_HERE
 ```
 
-The schemas tell you exactly:
+Each `Block*` schema (`BlockHeroBanner`, `BlockText`, etc.) tells you:
+- `component` enum → the exact key to register in `initNitro({ components })`
+- `content` → typed content fields
+- `items` → array of typed items (content pool)
+- `config` → typed configuration options
+- `slots` → named slot containers for nested blocks
 
-- **Which block components exist** — schemas named `Block{ComponentName}` (e.g., `BlockHeroBanner`, `BlockText`)
-- **What content fields each block has** — the `content` property with typed sub-properties
-- **What items each block receives** — the `items` array schema with typed item fields
-- **What config options exist** — the `config` property with typed fields
-- **What slots are available** — the `slots` property with named slot containers
-- **What entity models exist** — schemas named `Entity{Name}` (e.g., `EntityTiere`) with their field mappings
-
-#### How to Read the OpenAPI Schemas
-
-Each `Block*` schema has this structure:
-```
-BlockComponentName:
-  properties:
-    identifier  → CMS-internal block type name (enum with single value)
-    component   → React component name to register (enum with single value)
-    content     → Object with typed content fields (image, title, teaser, etc.)
-    config      → Object with typed configuration fields
-    items       → Array with typed item schemas (for content pool blocks)
-    slots       → Object with named slot containers (for nested blocks)
-```
-
-Each `Entity*` schema describes an entity model:
-```
-EntityName:
-  properties:
-    field_name → typed field (string, object, etc.)
-```
-
-> **Key**: If a property section only has `_empty: boolean`, it means that section is unused for that block.
+Each `Entity*` schema describes entity model fields.
 
 ---
 
 ## 4. Bootstrapping Order
 
-**The order matters.** Create config files before installing packages to reduce failure modes.
+**Order matters. Create config files BEFORE installing packages.**
 
-### Step-by-Step Order
-
-1. **Create `.babelrc`** (mandatory — forces Babel, avoids SWC transform crashes)
-2. **Create `tsconfig.json`**
-3. **Create `next.config.js`**
-4. **Create `package.json`** (with minimal deps, no lint deps)
-5. **Create `.npmrc`** (if peer conflicts appear — try without first)
-6. **Run `npm install`**
-7. **Create `.env.local`**
-8. **Create all source files** (`src/flyo.config.tsx`, `src/proxy.ts`, `src/app/...`, `src/components/...`)
-9. **Run `npm run dev`** and verify
-
-> **Why this order?** npm peer resolution is strict in WebContainers and SWC fallback can happen immediately during install. Pre-creating config files (especially `.babelrc`) ensures the build system is configured before any compilation occurs.
+1. Create `.npmrc` (mandatory — `legacy-peer-deps=true`)
+2. Create `tsconfig.json`
+3. Create `next.config.js`
+4. Create `package.json` (with correct versions — see section 6)
+5. Run `npm install`
+6. Create `.env.local`
+7. Create all source files (`src/flyo.config.tsx`, `src/proxy.ts`, `src/app/...`, `src/components/...`)
+8. Run `npm run dev`
 
 ---
 
-## 5. Required Config Files (Create BEFORE Install)
+## 5. Required Config Files
 
-### A) `.babelrc` — MANDATORY for Bolt
+### A) `.npmrc` — MANDATORY
 
-Create `.babelrc` in the project root **before running `npm install`**:
+Create `.npmrc` in the project root **before running `npm install`**:
 
-```json
-{
-  "presets": ["next/babel"]
-}
+```
+legacy-peer-deps=true
 ```
 
-**Why this is mandatory:**
-- `.babelrc` disables SWC transforms and uses JavaScript-based Babel transforms instead.
-- This reduces reliance on the WASM SWC bindings that cause crashes in WebContainers.
-- Next.js may still download SWC WASM for other internal features, but the main transform path uses Babel.
-- Build and dev will be slower (expected trade-off for stability).
-
-**Verification:** Fewer SWC-dependent transform errors. Dev server starts without SWC transform crashes.
+**This is NOT optional.** Without it, `npm install` will fail with ERESOLVE errors in WebContainers.
 
 ### B) `tsconfig.json`
 
@@ -276,25 +186,19 @@ const nextConfig = {
 module.exports = nextConfig;
 ```
 
-### D) `.npmrc` — Create If Peer Conflicts Occur
+### D) Do NOT Create `.babelrc`
 
-If `npm install` fails with ERESOLVE errors, create `.npmrc` in the project root:
+**Do NOT create a `.babelrc` file.** The `.babelrc` with `next/babel` preset was a workaround for older Next.js versions (13–15) in WebContainers. With Next.js 16+, it causes:
+- Hundreds of webpack cache resolution warnings
+- Disabled SWC (slower builds)
+- Broken Babel package resolution paths
+- `next/font` incompatibility
 
-```
-legacy-peer-deps=true
-```
-
-**When this is needed:**
-- Any third-party package has React 18-only peer ranges
-- Peer dependency resolution conflicts between packages
-
-> **Tip:** Try `npm install` without `.npmrc` first. If it fails, create `.npmrc` and retry.
+Next.js 16's built-in SWC WASM fallback works correctly without Babel overrides.
 
 ---
 
 ## 6. Package.json & Dependencies
-
-### Bolt Minimal Template
 
 ```json
 {
@@ -302,14 +206,13 @@ legacy-peer-deps=true
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack",
-    "build": "next build --webpack",
-    "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
   },
   "dependencies": {
     "@flyo/nitro-next": "^1.8.0",
-    "next": "^15.5.12",
+    "next": "^16.0.4",
     "react": "^19.2.1",
     "react-dom": "^19.2.1"
   },
@@ -322,33 +225,24 @@ legacy-peer-deps=true
 }
 ```
 
-### Key Decisions Explained
+### CRITICAL Version Rules
 
-| Decision | Reason |
-|----------|--------|
-| `next` uses `^15.5.12` or later | Compatible with `@flyo/nitro-next`. The Babel + Webpack mitigations handle WASM SWC issues across versions. |
-| `--webpack` in `dev` and `build` | Turbopack crashes in WASM environments (`turbo.createProject not supported`). |
-| No `lint` script or ESLint deps | ESLint and `eslint-config-next` introduce peer dependency conflicts (ESLint major versions, TypeScript-ESLint plugin ranges) causing ERESOLVE. Linting can be added later for local dev/CI. |
-| No `@next/swc-wasm-nodejs` or `@next/swc-wasm-wasm32` | Next.js downloads the correct WASM bindings automatically. Do NOT manually install them. |
-| Minimal deps only | UI libraries with React 18-only peers (`vaul`, `recharts`, older `@radix-ui/*`, etc.) cause install failures. Add after the baseline is stable. |
+| Package | Required Version | Why |
+|---------|-----------------|-----|
+| `next` | `^16.0.4` | `@flyo/nitro-next` peer dep requires `>=16.0.4`. Using 13/14/15 causes ERESOLVE and broken imports. |
+| `react` | `^19.2.1` | `@flyo/nitro-next` peer dep requires `^19.2.1`. |
+| `react-dom` | `^19.2.1` | Must match React version. |
 
-### Verification
+### What NOT to include
 
-After `npm install`:
-- Install completes without `--force` or manual version gymnastics
-- `npm run dev` starts and shows `Next.js ... (webpack)` in output
-- Dev output may show SWC WASM download — this is expected
-
-### Third-Party Package Compatibility
-
-If you need additional packages, ensure React 19 compatibility:
-
-| Package | Problematic Version | Fix |
-|---------|-------------------|-----|
-| `next-themes` | `0.3.x` (peer: React 16–18) | Use `next-themes@^0.4.4` |
-| `lucide-react` | `0.344.x` (peer: React 16–18) | Use `lucide-react@^0.460.0` |
-| `react-day-picker` | `8.x` (peer: React 16–18) | Use `react-day-picker@^9.0.0` |
-| `@radix-ui/*` | Old versions | Use latest versions (most now support React 19) |
+| Do NOT include | Why |
+|---------------|-----|
+| `eslint`, `eslint-config-next` | Peer dependency conflicts in WebContainers |
+| `@next/swc-wasm-nodejs` | Next.js downloads WASM bindings automatically |
+| `tailwindcss`, `postcss`, `autoprefixer` | Only add if user explicitly requests CSS framework |
+| `lucide-react`, `@radix-ui/*` | Only add if user explicitly requests icons/UI library |
+| Any `--webpack` in scripts | Not needed for Next.js 16+ |
+| Any `lint` script | No ESLint deps installed |
 
 ---
 
@@ -373,11 +267,9 @@ import type { ReactNode } from 'react';
 import { initNitro } from '@flyo/nitro-next/server';
 import { FlyoClientWrapper } from '@flyo/nitro-next/client';
 
-// Import ALL block components (one per Block* schema)
+// Import ALL block components (one per Block* schema from OpenAPI)
 import { HeroBanner } from './components/HeroBanner';
 import { Text } from './components/Text';
-// import { CardsGrid } from './components/CardsGrid';
-// import { SlotContainer } from './components/SlotContainer';
 
 const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
 const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
@@ -390,12 +282,10 @@ export const flyoConfig = initNitro({
   liveEdit,
   serverCacheTtl: 1200,
   clientCacheTtl: 900,
-  // Keys MUST match the "component" enum from each Block* schema exactly
+  // Keys MUST match the "component" enum from each Block* schema EXACTLY (case-sensitive)
   components: {
     HeroBanner: HeroBanner,
     Text: Text,
-    // CardsGrid: CardsGrid,
-    // SlotContainer: SlotContainer,
   }
 });
 
@@ -408,13 +298,11 @@ export function Flyo({ children }: { children: ReactNode }) {
 }
 ```
 
-### How to Determine What to Register
-
-Look at the OpenAPI schemas. For each `Block*` schema, read the `component` enum value — that's the key you register. Create one React component per `Block*` schema.
+**Important:** This file does NOT have `'use client'`. It is a server module. `FlyoClientWrapper` is a client component that gets rendered from here — this is valid in Next.js App Router.
 
 ---
 
-## 9. Middleware Proxy
+## 9. Proxy (Cache Control Middleware)
 
 Create `src/proxy.ts`:
 
@@ -429,17 +317,13 @@ export const config = {
 };
 ```
 
-Sets `Cache-Control` headers based on TTL config. Disables caching when `liveEdit` is `true`.
-
-> **Note**: The proxy IS the Next.js middleware. Place at `src/proxy.ts` (or `src/middleware.ts`).
+This is the Next.js proxy (formerly called "middleware" in Next.js ≤15). **In Next.js 16+ the file MUST be named `proxy.ts`** — Next.js only recognizes this exact filename. Place it at `src/proxy.ts` (if using `src/` directory) or `proxy.ts` (at project root). Sets `Cache-Control` headers based on TTL config. Disables caching when `liveEdit` is `true`.
 
 ---
 
 ## 10. Root Layout with Navigation
 
 Create `src/app/layout.tsx`:
-
-> **BOLT RULE: Do NOT use `next/font/google` or `next/font/local`.** These require SWC and will break builds when Babel is enabled. Use `<link>` tags for fonts instead.
 
 ```tsx
 import { Flyo } from '@/flyo.config';
@@ -461,7 +345,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <Flyo>
       <html lang={config?.nitro?.language || 'en'}>
         <head>
-          {/* Use <link> for Google Fonts — next/font is prohibited */}
+          {/* Use <link> for Google Fonts — next/font is prohibited in WebContainers */}
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
           <link
@@ -490,24 +374,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
 }
 ```
 
-### Multiple Containers & Nested Navigation
-
-Access other containers by identifier (e.g., `config?.containers?.footer`). For nested navigation with `children`:
-
-```tsx
-function NavItem({ item }: { item: ContainerPage }) {
-  return (
-    <li>
-      <Link href={item.href || '#'}>{item.label}</Link>
-      {item.children && item.children.length > 0 && (
-        <ul>{item.children.map((child, i) => <NavItem key={i} item={child} />)}</ul>
-      )}
-    </li>
-  );
-}
-```
-
-Global data: `config?.globals?.locations || []`
+**Rules:**
+- Do NOT import `next/font/google` or `next/font/local` — use `<link>` tags instead.
+- Root layout MUST wrap content with `<Flyo>`.
+- Access other containers by identifier: `config?.containers?.footer`.
+- For nested navigation, check `item.children` array.
 
 ---
 
@@ -522,54 +393,29 @@ export {
 } from '@flyo/nitro-next/server';
 ```
 
-**That's it.** Handles homepage (`/`), all CMS pages, 404s, and SEO metadata.
+**That's it.** This single file handles: homepage (`/`), all CMS pages, 404s, and SEO metadata.
 
-### Static Site Generation (Production Only)
-
-```tsx
-export {
-  nitroPageRoute as default,
-  nitroPageGenerateMetadata as generateMetadata,
-  nitroPageGenerateStaticParams as generateStaticParams,
-} from '@flyo/nitro-next/server';
-```
-
-> **WARNING**: `generateStaticParams` disables live preview. Only enable for production.
+> **Production SSG (optional):** Add `nitroPageGenerateStaticParams as generateStaticParams` for static generation. WARNING: This disables live preview. Only enable for production builds.
 
 ---
 
 ## 12. Building Block Components
 
-For each `Block*` schema in the OpenAPI response, create a React component. Every component receives a `block` prop of type `Block`.
+For each `Block*` schema in the OpenAPI response, create a React component.
 
-### General Pattern
+### Rules for ALL Block Components
 
-> **CRITICAL**: Every component that uses `editable()` **must** include `'use client'` as the very first line of the file. `editable()` is a client-only function imported from `@flyo/nitro-next/client` — using it in a server component will cause a runtime error. This is the single most common mistake when generating code with AI tools.
+1. **MUST have `'use client'` as the very first line** — `editable()` is a client-only function
+2. **MUST spread `{...editable(block)}` on the root element** — required for live editing
+3. **MUST import from the correct paths:**
+   - `Block` type → `@flyo/nitro-typescript`
+   - `editable` → `@flyo/nitro-next/client`
+   - `FlyoWysiwyg` → `@flyo/nitro-next/client`
+   - `FlyoCdnLoader` → `@flyo/nitro-next/client`
 
-```tsx
-'use client'; // ← REQUIRED: editable() is client-only
-
-import { Block } from '@flyo/nitro-typescript';
-import { editable } from '@flyo/nitro-next/client';
-
-export function ComponentName({ block }: { block: Block }) {
-  return (
-    <div {...editable(block)}>
-      {/* Render block.content fields based on the Block* schema */}
-    </div>
-  );
-}
-```
-
-**Rules:**
-- Components must be `'use client'` (they use `editable()`). **`editable()` is a client-only function** — it will fail if used in a server component without the `'use client'` directive at the top of the file.
-- Always spread `{...editable(block)}` on the root element for live editing
-- Access: `block.content.fieldName`, `block.items` (array), `block.config.fieldName`, `block.slots.slotName`
-- **Exception**: Components using `NitroSlot` must be **server components** (no `'use client'`, no `editable()`)
+**Exception:** Components using `NitroSlot` must be **server components** — no `'use client'`, no `editable()`.
 
 ### Example: HeroBanner (content fields)
-
-Schema shows: `content.image` (object), `content.title` (string), `content.teaser` (string)
 
 ```tsx
 'use client';
@@ -590,9 +436,7 @@ export function HeroBanner({ block }: { block: Block }) {
 }
 ```
 
-### Example: Text/WYSIWYG (rich text content)
-
-Schema shows: `content.content` with `html` (string) and `json` (TipTap JSON)
+### Example: Text/WYSIWYG (rich text)
 
 ```tsx
 'use client';
@@ -609,11 +453,26 @@ export function Text({ block }: { block: Block }) {
 }
 ```
 
-> Use `FlyoWysiwyg` with the `json` field (TipTap format) for proper rendering. Alternative: `block.content.content.html` with `dangerouslySetInnerHTML`.
+**Custom WYSIWYG image nodes:** In WYSIWYG content, image nodes have `node.attrs.src` as an object `{ source, caption, copyright }` — NOT a plain string URL. Always use `node.attrs.src.source` for the URL.
 
-### Example: CardsGrid (items-based block)
+```tsx
+'use client';
 
-Schema shows: `content._empty` (unused), `items` array with `title`, `teaser`, `image`
+export default function CustomImage({ node }: { node: { attrs: { src: { source: string; caption?: string }; alt?: string; title?: string } } }) {
+  return (
+    <img
+      src={node.attrs.src.source}
+      alt={node.attrs.alt}
+      title={node.attrs.title}
+      style={{ maxWidth: '100%', height: 'auto', margin: '1rem 0' }}
+    />
+  );
+}
+```
+
+Use it with: `<FlyoWysiwyg json={block.content.content.json} components={{ image: CustomImage }} />`
+
+### Example: Items-Based Block (content pool)
 
 ```tsx
 'use client';
@@ -640,12 +499,10 @@ export function CardsGrid({ block }: { block: Block }) {
 }
 ```
 
-### Example: SlotContainer (nested blocks — server component)
-
-Schema shows: `slots.content` with nested block array
+### Example: Slot Container (nested blocks — SERVER component)
 
 ```tsx
-// NO 'use client' — this is a server component
+// NO 'use client' — this MUST be a server component
 import { Block } from '@flyo/nitro-typescript';
 import { NitroSlot } from '@flyo/nitro-next/server';
 
@@ -658,70 +515,9 @@ export function SlotContainer({ block }: { block: Block }) {
 }
 ```
 
-> `NitroSlot` must be used in server components only. It renders nested blocks recursively.
+`NitroSlot` is server-only. Never use it in a `'use client'` component.
 
----
-
-## 13. Entity Detail Pages
-
-Entity models are described by `Entity*` schemas in the OpenAPI response (e.g., `EntityTiere`). To create detail pages for entities:
-
-Create a dynamic route, e.g., `src/app/tiere/[slug]/page.tsx`:
-
-```tsx
-import { nitroEntityRoute, nitroEntityGenerateMetadata } from '@flyo/nitro-next/server';
-
-const entityOptions = {
-  // The OpenAPI entity schema tells you what fields are available
-  resolver: async (entity: any) => {
-    return <div>
-      <h1>{entity.title}</h1>
-      <p>{entity.long_text}</p>
-    </div>;
-  }
-};
-
-export default function EntityPage(props: any) {
-  return nitroEntityRoute(props, entityOptions);
-}
-
-export function generateMetadata(props: any) {
-  return nitroEntityGenerateMetadata(props, entityOptions);
-}
-```
-
-The entity's available fields come from the `Entity*` schema in the OpenAPI response. Use `nitroEntityRoute` to fetch and render entity data, and `nitroEntityGenerateMetadata` for SEO.
-
----
-
-## 14. Not Found Page
-
-Create `src/app/not-found.tsx`:
-
-```tsx
-export default function NotFoundPage() {
-  return <h1>Page not found</h1>;
-}
-```
-
----
-
-## 15. Sitemap Generation
-
-Create `src/app/sitemap.ts`:
-
-```ts
-import { nitroSitemap } from '@flyo/nitro-next/server';
-import { flyoConfig } from '../flyo.config';
-
-export default async function sitemap() {
-  return nitroSitemap(flyoConfig());
-}
-```
-
----
-
-## 16. Image Optimization
+### Image Optimization with FlyoCdnLoader
 
 Use `FlyoCdnLoader` with Next.js `Image` for Flyo CDN optimization:
 
@@ -742,257 +538,211 @@ import { FlyoCdnLoader } from '@flyo/nitro-next/client';
 
 ---
 
-## 17. API Reference Summary
+## 13. Entity Detail Pages
 
-### `@flyo/nitro-next/server`
+Create a dynamic route, e.g., `src/app/tiere/[slug]/page.tsx`:
 
-| Export | Description |
-|--------|-------------|
-| `initNitro(config)` | Initialize Flyo configuration. Returns a function returning `NitroState`. |
-| `getNitroConfig()` | Fetch/cache config response (navigation, pages, globals). |
-| `getNitroPages()` | Pages API instance for fetching page data. |
-| `getNitroEntities()` | Entities API instance for fetching entity data. |
-| `getNitroSearch()` | Search API instance. |
-| `getNitro()` | Access current Nitro state. |
-| `nitroPageRoute` | Default page route handler for `[[...slug]]/page.tsx`. |
-| `nitroPageGenerateMetadata` | Generate SEO metadata for pages. |
-| `nitroPageGenerateStaticParams` | Generate static params for SSG (production only). |
-| `nitroEntityRoute(props, options)` | Entity detail page handler. |
-| `nitroEntityGenerateMetadata(props, options)` | Generate metadata for entity pages. |
-| `nitroSitemap(state)` | Generate sitemap from CMS content. |
-| `NitroPage` | Server component: renders all blocks on a page. |
-| `NitroBlock` | Server component: renders a single block. |
-| `NitroSlot` | Server component: renders nested blocks from a slot. |
-| `NitroDebugInfo` | Server component: outputs debug info as HTML comment. |
+```tsx
+import {
+  nitroEntityRoute,
+  nitroEntityGenerateMetadata,
+  getNitroEntities,
+  type EntityResolver
+} from '@flyo/nitro-next/server';
+import { FlyoMetric } from '@flyo/nitro-next/client';
+import type { Entity } from '@flyo/nitro-typescript';
 
-### `@flyo/nitro-next/client`
+type RouteParams = {
+  params: Promise<{ slug: string }>;
+};
 
-| Export | Description |
-|--------|-------------|
-| `editable(block)` | Returns data attributes for live editor. Spread on root element. |
-| `FlyoClientWrapper` | Wrapper for live editing mode. |
-| `FlyoWysiwyg` | Renders TipTap JSON content with optional custom node components. |
-| `FlyoCdnLoader` | Image loader for Next.js Image with Flyo CDN. |
-| `FlyoMetric` | Tracking component for entity metrics (production only). |
+const resolver: EntityResolver<{ slug: string }> = async (params) => {
+  const { slug } = await params;
+  return getNitroEntities().entityBySlug({ slug, typeId: 123 }); // ← Use actual typeId from CMS
+};
 
-### `@flyo/nitro-next/proxy`
+export const generateMetadata = (props: RouteParams) =>
+  nitroEntityGenerateMetadata(props, { resolver });
 
-| Export | Description |
-|--------|-------------|
-| `createProxy(state)` | Create Next.js middleware for cache control. |
-
-### `@flyo/nitro-typescript`
-
-| Export | Description |
-|--------|-------------|
-| `Block` | TypeScript type for a page block. |
-| `Entity` | TypeScript type for an entity. |
-| `Page` | TypeScript type for a page. |
-| `ConfigResponse` | TypeScript type for config API response. |
-| `ContainerPage` | TypeScript type for a navigation container page item. |
+export default function Page(props: RouteParams) {
+  return nitroEntityRoute(props, {
+    resolver,
+    render: (entity: Entity) => (
+      <div>
+        <FlyoMetric entity={entity} />
+        <h1>{entity.entity?.entity_title}</h1>
+        <p>{entity.entity?.entity_teaser}</p>
+      </div>
+    ),
+  });
+}
+```
 
 ---
 
-## 18. Prohibited Patterns
+## 14. Verified Exports Reference
+
+These are the **exact exports** available. Do NOT import anything not listed here.
+
+### `@flyo/nitro-next/server`
+
+```ts
+// Components
+NitroBlock         // Server component: renders a single block
+NitroPage          // Server component: renders all blocks on a page
+NitroSlot          // Server component: renders nested blocks from a slot
+NitroDebugInfo     // Server component: outputs debug HTML comment
+
+// Initialization
+initNitro           // Initialize Flyo configuration, returns () => NitroState
+getNitro            // Access current Nitro state (throws if not initialized)
+getNitroConfig      // Fetch/cache config response (navigation, pages, globals)
+getNitroPages       // Pages API instance
+getNitroEntities    // Entities API instance
+getNitroSitemap     // Sitemap API instance
+getNitroSearch      // Search API instance
+
+// Route helpers — Pages
+nitroPageRoute              // Default page route handler for [[...slug]]/page.tsx
+nitroPageGenerateMetadata   // Generate SEO metadata for pages
+nitroPageGenerateStaticParams // Generate static params for SSG (production only)
+
+// Route helpers — Entities
+nitroEntityRoute            // Entity detail page handler
+nitroEntityGenerateMetadata // Generate metadata for entity pages
+
+// Sitemap
+nitroSitemap                // Generate sitemap from CMS content
+
+// Types
+type EntityResolver
+type NitroState
+
+// Also re-exported for convenience (importable from server OR client):
+FlyoCdnLoader              // Image loader — also available via @flyo/nitro-next/client
+```
+
+### `@flyo/nitro-next/client`
+
+```ts
+editable(block: Block)     // Returns { 'data-flyo-uid': string } for live editing. MUST spread on root element.
+FlyoClientWrapper          // Wrapper component for live editing mode
+FlyoWysiwyg               // Renders TipTap JSON content. Props: { json, components? }
+FlyoCdnLoader              // Image loader for Next.js Image with Flyo CDN
+FlyoMetric                 // Tracking component for entity metrics (production only)
+isProd                     // Boolean: true if NODE_ENV === 'production'
+```
+
+### `@flyo/nitro-next/proxy`
+
+```ts
+createProxy(state: NitroState) // Create Next.js middleware for cache control
+```
+
+### `@flyo/nitro-typescript`
+
+```ts
+Block              // TypeScript type for a page block
+Entity             // TypeScript type for an entity
+Page               // TypeScript type for a page
+ConfigResponse     // TypeScript type for config API response
+ContainerPage      // TypeScript type for a navigation container page item
+```
+
+---
+
+## 15. Prohibited Patterns
 
 ### NEVER Do These
 
-1. **Do NOT use `next/font/google` or `next/font/local`.**
-   - `next/font` relies on SWC transforms. With Babel enabled (`.babelrc`), `next/font` will break builds.
-   - **Verification:** `grep -R "next/font" -n` must return nothing.
-   - **Instead:** Use `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=...">` in the `<head>` and style with `fontFamily`.
+1. **NEVER use `next@13`, `next@14`, or `next@15`.** The library requires `next@>=16.0.4`. Wrong version = broken installs AND broken imports (`editable`, `FlyoClientWrapper`, `FlyoCdnLoader` will show as "not exported").
 
-2. **Do NOT use Turbopack.**
-   - Turbopack crashes in WASM environments.
-   - Always use `--webpack` flag in `dev` and `build` scripts.
-   - **Verification:** Dev output shows `Next.js ... (webpack)`.
+2. **NEVER create `.babelrc`.** This disables SWC and causes massive webpack resolution errors. Next.js 16 does not need Babel overrides.
 
-3. **Do NOT install ESLint or linting packages in the base template.**
-   - `eslint`, `eslint-config-next`, and related packages introduce peer dependency conflicts.
-   - Remove `lint` script or leave it but do not install lint deps.
-   - Linting can be added as an optional step later for local dev or CI.
+3. **NEVER use `--webpack` flag** in scripts. `next dev` and `next build` (no flags) are correct.
 
-4. **Do NOT install `@next/swc-wasm-nodejs` or `@next/swc-wasm-wasm32` manually.**
-   - Next.js downloads the correct WASM bindings automatically.
+4. **NEVER use `next/font/google` or `next/font/local`.** Use `<link>` tags for fonts.
 
-5. **Do NOT create Vite files.**
-   - No `vite.config.ts`, `vite.config.js`, or root `index.html`.
-   - No Vite scripts in `package.json`.
-   - If Bolt's publish pipeline runs `npx vite build`, check the Bolt template/config detection — it may have misidentified the project.
-   - **Verification:** No Vite files exist; publish uses `next build --webpack`.
+5. **NEVER use Vite.** No `vite.config.ts`, no root `index.html`, no Vite scripts.
 
-6. **Do NOT install non-essential UI libraries upfront.**
-   - Packages like `vaul`, `recharts`, older `react-day-picker`, etc. have React 18-only peer ranges.
-   - Get the baseline working first; add libraries one at a time.
+6. **NEVER install `@next/swc-wasm-nodejs` manually.** Next.js downloads WASM bindings automatically.
+
+7. **NEVER install ESLint in the base template.** It causes peer dependency conflicts.
+
+8. **Always use explicit subpath imports** — `@flyo/nitro-next/server`, `@flyo/nitro-next/client`, `@flyo/nitro-next/proxy`. Never use a bare `@flyo/nitro-next` import.
+
+9. **NEVER use `editable()` without `'use client'`** at the top of the file. It is a client-only function.
+
+10. **NEVER use `NitroSlot` in a client component.** It is server-only.
 
 ### Folder Structure
 
 ```
-.babelrc                     # ← MANDATORY for Bolt
-.npmrc                       # ← Only if peer conflicts appear
+.npmrc                       # ← MANDATORY: legacy-peer-deps=true
 .env.local                   # ← API token and config
 next.config.js               # ← Image remote patterns
 tsconfig.json
 package.json
 src/
 ├── flyo.config.tsx          # Flyo configuration & component registry
-├── proxy.ts                 # Cache control middleware
+├── proxy.ts                 # Cache control proxy (MUST be named proxy.ts in Next.js 16+)
 ├── app/
-│   ├── layout.tsx           # Root layout — NO next/font imports
-│   ├── not-found.tsx        # 404 page
-│   ├── sitemap.ts           # Auto-generated sitemap
+│   ├── layout.tsx           # Root layout with <Flyo> wrapper
+│   ├── not-found.tsx        # 404 page (simple: export default function NotFoundPage() { return <h1>Page not found</h1>; })
+│   ├── sitemap.ts           # Sitemap (import { nitroSitemap } from server, import { flyoConfig } from config)
 │   └── [[...slug]]/
-│       └── page.tsx         # ← THE ONLY PAGE ROUTE NEEDED
+│       └── page.tsx         # ← THE ONLY PAGE ROUTE NEEDED (2-line re-export)
 └── components/
-    ├── HeroBanner.tsx       # One component per Block* schema
+    ├── HeroBanner.tsx       # One 'use client' component per Block* schema
     ├── Text.tsx
-    ├── CardsGrid.tsx
     └── ...
 ```
 
 ---
 
-## 19. Common Mistakes to Avoid
+## 16. Troubleshooting
 
-1. **Missing component registration**: Every `Block*` schema's `component` value must be registered in `initNitro({ components })`.
-2. **Wrong component key**: Keys must **exactly match** the `component` enum (case-sensitive). `"HeroBanner"` ≠ `"heroBanner"`.
-3. **Using Pages Router**: Only **App Router** (`app/` directory) is supported.
-4. **Forgetting `'use client'`**: Components using `editable()`, `FlyoWysiwyg`, `FlyoCdnLoader` **must** have `'use client'` at the very top of the file. `editable()` is a client-only function and will break if used in a server component. This is the most common mistake made by AI code generators.
-5. **`NitroSlot` in client components**: `NitroSlot` is server-only. No `'use client'` on slot components.
-6. **`generateStaticParams` in development**: Disables live preview. Production only.
-7. **Forgetting `editable(block)`**: Always spread on root element for live editing. Remember: `editable()` requires `'use client'`.
-8. **Wrong image structure**: Images are `{source, caption, copyright}` objects, not strings. Use `.source` for the URL.
-9. **Wrong WYSIWYG image src**: In WYSIWYG nodes, `node.attrs.src` is also `{source, caption, copyright}`. Use `.source`.
-10. **Not wrapping layout with `<Flyo>`**: Root layout must use the `<Flyo>` wrapper.
-11. **Hardcoding navigation**: Use `config.containers` dynamically.
-12. **Creating multiple page routes**: Only ONE catch-all `[[...slug]]/page.tsx`. No separate routes for CMS pages.
-13. **Using `next/font/*`**: Breaks builds when Babel is enabled. Use `<link>` tags instead.
-14. **Using Turbopack**: Always use `--webpack`. Turbopack crashes in WASM environments.
-15. **Including ESLint deps**: Causes peer conflicts. Omit from base template.
+### Error → Cause → Fix Table
 
+| Error/Symptom | Root Cause | Fix |
+|--------------|-----------|-----|
+| `ERESOLVE could not resolve` / `peer next@">=16.0.4"` | Next.js version too old (`13.x`, `14.x`, `15.x`) | Change `next` in `package.json` to `"^16.0.4"`, delete `node_modules` and `package-lock.json`, run `npm install` |
+| `Module not found: Can't resolve '@flyo/nitro-next/client'` | Wrong Next.js version installed OR `@flyo/nitro-next` not properly installed | Fix Next.js to `^16.0.4`, ensure `.npmrc` has `legacy-peer-deps=true`, reinstall |
+| `'editable' is not exported from '@flyo/nitro-next/client'` | Same as above — version mismatch caused broken install | Same fix as above |
+| `'FlyoClientWrapper' is not exported from '@flyo/nitro-next/client'` | Same as above | Same fix as above |
+| `'FlyoCdnLoader' is not exported from '@flyo/nitro-next/client'` | Same as above | Same fix as above |
+| `Invariant: Expected workUnitAsyncStorage to have a store` | Next.js version mismatch OR WASM async context issue | Ensure `next@^16.0.4`. Delete `.next` cache: `rm -rf .next`. Restart dev server. |
+| Hundreds of `webpack.cache.PackFileCacheStrategy` warnings about Babel | `.babelrc` exists with `next/babel` preset | **Delete `.babelrc` entirely.** It is not needed for Next.js 16+. |
+| `turbo.createProject is not supported by the wasm bindings` | Old Next.js Turbopack WASM issue | Upgrade to `next@^16.0.4` — Turbopack WASM is stable in Next.js 16 |
+| `npm install` fails even with correct versions | Missing `.npmrc` | Create `.npmrc` with `legacy-peer-deps=true` before installing |
+| Bolt publish runs `npx vite build` | Bolt misidentified project as Vite | Ensure no `vite.config.*` or root `index.html` exists |
+| `next/font` build errors | `next/font` unreliable in WASM environments | Remove all `next/font` imports, use `<link>` tags instead. |
+| `ERR_INVALID_ARG_TYPE: "code" must be number, received SIGINT` | WebContainer signal handling quirk — harmless on exit | Ignore. This only happens on Ctrl+C and does not affect functionality. |
 
----
-
-## 20. Troubleshooting
-
-### `npm install` fails with ERESOLVE peer dependency errors
+### Complete Reset
 
 ```bash
-echo "legacy-peer-deps=true" > .npmrc
-rm -rf node_modules package-lock.json
-npm install
-```
-
-### Turbopack crashes (`turbo.createProject is not supported`)
-
-Ensure `package.json` scripts include `--webpack`:
-```json
-"dev": "next dev --webpack",
-"build": "next build --webpack"
-```
-
-### Invariant errors (`entryCSSFiles`, `workUnitAsyncStorage`, etc.)
-
-These are caused by WASM SWC async context issues. Ensure all mitigations are applied:
-
-1. `.babelrc` exists with `{"presets": ["next/babel"]}`
-2. Scripts use `--webpack` (not Turbopack)
-3. No `next/font/*` imports in code
-4. Run `rm -rf .next && npm run dev` to clear cache
-
-### Build errors referencing font loader or SWC
-
-You're using `next/font/*` with Babel enabled. Remove all `next/font` imports:
-
-```bash
-grep -R "next/font" -n
-```
-
-Replace with `<link>` tags in `layout.tsx` `<head>`.
-
-### Preview returns 500 but deploy works
-
-This is a known WebContainer limitation. The WASM SWC bindings cannot properly maintain async context for server components. Mitigations:
-
-1. Ensure `.babelrc` exists with `{"presets": ["next/babel"]}`
-2. Ensure scripts use `--webpack` flag
-3. Ensure no `next/font/*` imports exist
-4. Run `rm -rf .next && npm run dev` to clear cache
-5. If issues persist, this is an environment limitation — the same repo will work in a standard glibc environment (local dev, Docker, Vercel)
-
-### Bolt publish runs `npx vite build` instead of `next build`
-
-Bolt misidentified the project as Vite. Check:
-- No `vite.config.ts` or `vite.config.js` exists
-- No root `index.html` exists
-- No Vite-related scripts in `package.json`
-- Check Bolt's template config files (often `config.json`) if the publish pipeline persists
-
-### Complete reset
-
-```bash
-echo "legacy-peer-deps=true" > .npmrc
 rm -rf node_modules .next package-lock.json
-npm install --legacy-peer-deps
+echo "legacy-peer-deps=true" > .npmrc
+npm install
 npm run dev
 ```
 
-If Bolt created a Vite project instead of Next.js, you must start over — Vite and Next.js are entirely different frameworks.
+### Verification Checklist
 
-### When to Give Up on Bolt Preview
+After scaffolding, verify:
 
-If invariant errors persist after applying **all** mitigations (Babel, Webpack, `--webpack` flag, no `next/font`):
-
-- **This is an environment limitation**, not a code problem.
-- **Verify:** Run the exact same repo locally in a glibc environment (Linux, macOS, or Docker) — it should work.
-- **Recommended:** Use Bolt for scaffolding and deployment. Use local dev for debugging and preview.
-
----
-
-## 21. Validation Checklist
-
-After scaffolding a project, verify each item:
-
-### Config & Files
-
-- [ ] `.babelrc` exists with `{"presets": ["next/babel"]}`
-- [ ] `next.config.js` has `images.remotePatterns` for `**.flyo.cloud`
-- [ ] `tsconfig.json` exists with `paths: { "@/*": ["./src/*"] }`
+- [ ] `package.json` has `"next": "^16.0.4"` (NOT 13, 14, or 15)
+- [ ] `package.json` has `"react": "^19.2.1"` and `"react-dom": "^19.2.1"`
+- [ ] `package.json` scripts are `"dev": "next dev"` and `"build": "next build"` (NO `--webpack` flag)
+- [ ] `.npmrc` exists with `legacy-peer-deps=true`
+- [ ] `.babelrc` does NOT exist
 - [ ] No `vite.config.*` files exist
 - [ ] No root `index.html` exists
-
-### Dependencies
-
-- [ ] `next` version is `^15.5.12` or later in `package.json`
-- [ ] No `eslint` or `eslint-config-next` in dependencies
-- [ ] No `@next/swc-wasm-nodejs` or `@next/swc-wasm-wasm32` in dependencies
-- [ ] `npm install` succeeds without `--force`
-
-### Scripts
-
-- [ ] `dev` script is `next dev --webpack`
-- [ ] `build` script is `next build --webpack`
-- [ ] No Vite-related scripts
-
-### Code
-
-- [ ] `grep -R "next/font" -n` returns nothing
-- [ ] `src/flyo.config.tsx` exists with component registry
-- [ ] `src/proxy.ts` exists (middleware)
-- [ ] `src/app/layout.tsx` uses `<Flyo>` wrapper and `<link>` tags for fonts (not `next/font`)
-- [ ] `src/app/[[...slug]]/page.tsx` exists (catch-all route)
-- [ ] `src/app/not-found.tsx` exists
+- [ ] `grep -r "next/font" src/` returns nothing
+- [ ] All `@flyo/nitro-next` imports use explicit subpaths (`/server`, `/client`, `/proxy`) — never bare `@flyo/nitro-next`
+- [ ] Proxy file is named `src/proxy.ts` (NOT `middleware.ts` — Next.js 16 renamed middleware to proxy)
 - [ ] All block components have `'use client'` and use `editable(block)`
 - [ ] Slot components do NOT have `'use client'`
-
-### Runtime
-
-- [ ] `npm run dev` starts successfully
-- [ ] Dev output shows `Next.js ... (webpack)` (not Turbopack)
-- [ ] Homepage renders at least a basic Flyo page route
-- [ ] Publish uses `next build --webpack`, not `vite build`
-
-### If Invariants Persist
-
-- [ ] Confirm it is environment-specific: run the same repo locally in a glibc environment
-- [ ] Use Bolt for scaffolding/deployment, local dev for preview/debugging
+- [ ] `npm install` succeeds
+- [ ] `npm run dev` starts without import errors
