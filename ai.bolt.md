@@ -1,6 +1,6 @@
-# AI Instructions: Building a Next.js Website with Flyo Nitro Headless CMS — Bolt.new / StackBlitz Edition
+# AI Instructions: Building a Next.js Website with Flyo Nitro Headless CMS
 
-> **Step-by-step guide for AI assistants to scaffold a Next.js App Router website powered by Flyo Nitro headless CMS using `@flyo/nitro-next` — optimized for Bolt.new and StackBlitz WebContainer environments.**
+> **Step-by-step guide for AI assistants to scaffold a Next.js App Router website powered by Flyo Nitro headless CMS using `@flyo/nitro-next`.**
 
 ---
 
@@ -8,11 +8,11 @@
 >
 > 1. This is a **Next.js App Router** project. **Do NOT use Vite, Create React App, or any other framework.** Never create `vite.config.*`, root `index.html`, or Vite scripts.
 > 2. **Next.js version MUST be `^16.0.4` or higher.** The `@flyo/nitro-next` package has `peerDependencies: { "next": ">=16.0.4" }`. Using any older version (13, 14, 15) will cause ERESOLVE install failures and broken imports.
-> 3. **Always create `.npmrc` with `legacy-peer-deps=true` BEFORE running `npm install`.** WebContainers have strict npm resolution that causes peer dependency conflicts without this.
-> 4. **Do NOT create a `.babelrc` file.** Babel transforms are NOT needed for Next.js 16+. Creating `.babelrc` disables SWC and causes hundreds of webpack cache resolution errors.
-> 5. **Do NOT use `--webpack` flag** in dev or build scripts. Plain `next dev` and `next build` are correct for Next.js 16+.
-> 6. **Do NOT use `next/font/google` or `next/font/local`.** These may fail in WebContainer WASM environments. Use `<link>` tags for Google Fonts instead.
-> 7. **No ESLint/linting packages** — they introduce peer dependency conflicts in WebContainers.
+> 3. **Always create `.npmrc` with `legacy-peer-deps=true` BEFORE running `npm install`.** Without this, `npm install` will fail with peer dependency conflicts.
+> 4. **MUST create `.babelrc` with `{ "presets": ["next/babel"] }`.** SWC does NOT work in this environment. Without `.babelrc`, Next.js will fail to compile.
+> 5. **MUST use `--webpack` flag** in the dev script: `"dev": "next dev --webpack"`. Turbopack does not support Babel, so webpack mode is required. Build uses webpack by default.
+> 6. **Do NOT use `next/font/google` or `next/font/local`.** These require SWC which does not work. Use `<link>` tags for Google Fonts instead.
+> 7. **No ESLint/linting packages** — they introduce peer dependency conflicts.
 > 8. **Create ALL config files BEFORE running `npm install`** — `.npmrc`, `tsconfig.json`, `next.config.js`, `package.json` must exist first.
 > 9. **Do NOT use `lucide-react`, `@radix-ui/*`, `tailwindcss`, or any UI library** unless the user explicitly requests it. Keep dependencies minimal to avoid install failures.
 > 10. **Always use subpath imports.** The valid import paths are: `@flyo/nitro-next/server`, `@flyo/nitro-next/client`, and `@flyo/nitro-next/proxy`. Never use a bare `@flyo/nitro-next` import.
@@ -21,7 +21,7 @@
 
 ## Table of Contents
 
-1. [WebContainer Constraints](#1-webcontainer-constraints)
+1. [Environment Constraints](#1-environment-constraints)
 2. [Architecture Overview](#2-architecture-overview)
 3. [Prerequisites & User-Provided Data](#3-prerequisites--user-provided-data)
 4. [Bootstrapping Order](#4-bootstrapping-order)
@@ -40,15 +40,16 @@
 
 ---
 
-## 1. WebContainer Constraints
+## 1. Environment Constraints
 
-Bolt.new and StackBlitz run Node.js in the browser using **WebContainers** (WASM-based). Key constraints:
+Key constraints for this environment:
 
-- Native SWC binaries cannot load — Next.js falls back to WASM SWC bindings automatically. This is expected.
-- npm peer dependency resolution is stricter — `.npmrc` with `legacy-peer-deps=true` is mandatory.
-- `next/font/*` may fail under WASM — use `<link>` tags instead.
+- **SWC does NOT work** (neither native binaries nor WASM). The **only** working compiler is Babel via `.babelrc`.
+- Turbopack requires SWC, so it cannot work either — **`--webpack` is mandatory** for the dev server.
+- npm peer dependency resolution is strict — `.npmrc` with `legacy-peer-deps=true` is mandatory.
+- `next/font/*` requires SWC — use `<link>` tags instead.
 
-**The correct approach for Next.js 16+ is to use the default build system (SWC + Turbopack) without any Babel overrides.** The WASM SWC fallback in Next.js 16 is stable enough for both dev and build.
+**Always use `.babelrc` with the `next/babel` preset and run dev with `--webpack`.** This bypasses SWC entirely and uses Babel + webpack.
 
 ---
 
@@ -116,13 +117,14 @@ Each `Entity*` schema describes entity model fields.
 **Order matters. Create config files BEFORE installing packages.**
 
 1. Create `.npmrc` (mandatory — `legacy-peer-deps=true`)
-2. Create `tsconfig.json`
-3. Create `next.config.js`
-4. Create `package.json` (with correct versions — see section 6)
-5. Run `npm install`
-6. Create `.env.local`
-7. Create all source files (`src/flyo.config.tsx`, `src/proxy.ts`, `src/app/...`, `src/components/...`)
-8. Run `npm run dev`
+2. Create `.babelrc` (mandatory — `{ "presets": ["next/babel"] }`)
+3. Create `tsconfig.json`
+4. Create `next.config.js`
+5. Create `package.json` (with correct versions — see section 6)
+6. Run `npm install`
+7. Create `.env.local`
+8. Create all source files (`src/flyo.config.tsx`, `src/proxy.ts`, `src/app/...`, `src/components/...`)
+9. Run `npm run dev`
 
 ---
 
@@ -136,7 +138,7 @@ Create `.npmrc` in the project root **before running `npm install`**:
 legacy-peer-deps=true
 ```
 
-**This is NOT optional.** Without it, `npm install` will fail with ERESOLVE errors in WebContainers.
+**This is NOT optional.** Without it, `npm install` will fail with ERESOLVE errors.
 
 ### B) `tsconfig.json`
 
@@ -186,15 +188,19 @@ const nextConfig = {
 module.exports = nextConfig;
 ```
 
-### D) Do NOT Create `.babelrc`
+### D) `.babelrc` — MANDATORY
 
-**Do NOT create a `.babelrc` file.** The `.babelrc` with `next/babel` preset was a workaround for older Next.js versions (13–15) in WebContainers. With Next.js 16+, it causes:
-- Hundreds of webpack cache resolution warnings
-- Disabled SWC (slower builds)
-- Broken Babel package resolution paths
-- `next/font` incompatibility
+Create `.babelrc` in the project root **before running `npm install`**:
 
-Next.js 16's built-in SWC WASM fallback works correctly without Babel overrides.
+```json
+{
+  "presets": ["next/babel"]
+}
+```
+
+**This is NOT optional.** SWC does NOT work in this environment. Without `.babelrc`, Next.js will fail to compile JSX/TSX. The `next/babel` preset is the only working compiler.
+
+**Important:** Because `.babelrc` is active, `next/font/google` and `next/font/local` will NOT work (they require SWC). Use `<link>` tags for fonts instead.
 
 ---
 
@@ -206,7 +212,7 @@ Next.js 16's built-in SWC WASM fallback works correctly without Babel overrides.
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start"
   },
@@ -237,11 +243,10 @@ Next.js 16's built-in SWC WASM fallback works correctly without Babel overrides.
 
 | Do NOT include | Why |
 |---------------|-----|
-| `eslint`, `eslint-config-next` | Peer dependency conflicts in WebContainers |
-| `@next/swc-wasm-nodejs` | Next.js downloads WASM bindings automatically |
+| `eslint`, `eslint-config-next` | Peer dependency conflicts |
+| `@next/swc-wasm-nodejs` | SWC does not work — Babel is used instead |
 | `tailwindcss`, `postcss`, `autoprefixer` | Only add if user explicitly requests CSS framework |
 | `lucide-react`, `@radix-ui/*` | Only add if user explicitly requests icons/UI library |
-| Any `--webpack` in scripts | Not needed for Next.js 16+ |
 | Any `lint` script | No ESLint deps installed |
 
 ---
@@ -345,7 +350,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <Flyo>
       <html lang={config?.nitro?.language || 'en'}>
         <head>
-          {/* Use <link> for Google Fonts — next/font is prohibited in WebContainers */}
+          {/* Use <link> for Google Fonts — next/font requires SWC which is not available */}
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
           <link
@@ -657,15 +662,15 @@ ContainerPage      // TypeScript type for a navigation container page item
 
 1. **NEVER use `next@13`, `next@14`, or `next@15`.** The library requires `next@>=16.0.4`. Wrong version = broken installs AND broken imports (`editable`, `FlyoClientWrapper`, `FlyoCdnLoader` will show as "not exported").
 
-2. **NEVER create `.babelrc`.** This disables SWC and causes massive webpack resolution errors. Next.js 16 does not need Babel overrides.
+2. **ALWAYS create `.babelrc`** with `{ "presets": ["next/babel"] }`. SWC does not work — Babel is the only working compiler.
 
-3. **NEVER use `--webpack` flag** in scripts. `next dev` and `next build` (no flags) are correct.
+3. **ALWAYS use `--webpack` flag** in the dev script: `"dev": "next dev --webpack"`. Turbopack requires SWC which is not available.
 
 4. **NEVER use `next/font/google` or `next/font/local`.** Use `<link>` tags for fonts.
 
 5. **NEVER use Vite.** No `vite.config.ts`, no root `index.html`, no Vite scripts.
 
-6. **NEVER install `@next/swc-wasm-nodejs` manually.** Next.js downloads WASM bindings automatically.
+6. **NEVER install `@next/swc-wasm-nodejs` manually.** SWC does not work. Babel is used instead.
 
 7. **NEVER install ESLint in the base template.** It causes peer dependency conflicts.
 
@@ -679,6 +684,7 @@ ContainerPage      // TypeScript type for a navigation container page item
 
 ```
 .npmrc                       # ← MANDATORY: legacy-peer-deps=true
+.babelrc                     # ← MANDATORY: { "presets": ["next/babel"] } — SWC is not available
 .env.local                   # ← API token and config
 next.config.js               # ← Image remote patterns
 tsconfig.json
@@ -712,18 +718,19 @@ src/
 | `'FlyoClientWrapper' is not exported from '@flyo/nitro-next/client'` | Same as above | Same fix as above |
 | `'FlyoCdnLoader' is not exported from '@flyo/nitro-next/client'` | Same as above | Same fix as above |
 | `Invariant: Expected workUnitAsyncStorage to have a store` | Next.js version mismatch OR WASM async context issue | Ensure `next@^16.0.4`. Delete `.next` cache: `rm -rf .next`. Restart dev server. |
-| Hundreds of `webpack.cache.PackFileCacheStrategy` warnings about Babel | `.babelrc` exists with `next/babel` preset | **Delete `.babelrc` entirely.** It is not needed for Next.js 16+. |
-| `turbo.createProject is not supported by the wasm bindings` | Old Next.js Turbopack WASM issue | Upgrade to `next@^16.0.4` — Turbopack WASM is stable in Next.js 16 |
+| Hundreds of `webpack.cache.PackFileCacheStrategy` warnings | Missing or incorrect `.babelrc`, or wrong Next.js version | Ensure `.babelrc` has `{ "presets": ["next/babel"] }` and `next@^16.0.4` is installed. Delete `.next` and `node_modules`, reinstall. |
+| `turbo.createProject is not supported by the wasm bindings` | Turbopack cannot run — SWC is not available | Use `--webpack` flag: `"dev": "next dev --webpack"`. Turbopack requires SWC which is not available. |
 | `npm install` fails even with correct versions | Missing `.npmrc` | Create `.npmrc` with `legacy-peer-deps=true` before installing |
-| Bolt publish runs `npx vite build` | Bolt misidentified project as Vite | Ensure no `vite.config.*` or root `index.html` exists |
-| `next/font` build errors | `next/font` unreliable in WASM environments | Remove all `next/font` imports, use `<link>` tags instead. |
-| `ERR_INVALID_ARG_TYPE: "code" must be number, received SIGINT` | WebContainer signal handling quirk — harmless on exit | Ignore. This only happens on Ctrl+C and does not affect functionality. |
+| Build runs `npx vite build` instead of `next build` | Project misidentified as Vite | Ensure no `vite.config.*` or root `index.html` exists |
+| `next/font` build errors | `next/font` requires SWC which is not available | Remove all `next/font` imports, use `<link>` tags instead. |
+| `ERR_INVALID_ARG_TYPE: "code" must be number, received SIGINT` | Signal handling quirk — harmless on exit | Ignore. This only happens on Ctrl+C and does not affect functionality. |
 
 ### Complete Reset
 
 ```bash
 rm -rf node_modules .next package-lock.json
 echo "legacy-peer-deps=true" > .npmrc
+echo '{"presets":["next/babel"]}' > .babelrc
 npm install
 npm run dev
 ```
@@ -734,9 +741,10 @@ After scaffolding, verify:
 
 - [ ] `package.json` has `"next": "^16.0.4"` (NOT 13, 14, or 15)
 - [ ] `package.json` has `"react": "^19.2.1"` and `"react-dom": "^19.2.1"`
-- [ ] `package.json` scripts are `"dev": "next dev"` and `"build": "next build"` (NO `--webpack` flag)
+- [ ] `package.json` dev script is `"dev": "next dev --webpack"` (webpack required — Turbopack needs SWC which is not available)
+- [ ] `package.json` build script is `"build": "next build"` (webpack is default for build)
 - [ ] `.npmrc` exists with `legacy-peer-deps=true`
-- [ ] `.babelrc` does NOT exist
+- [ ] `.babelrc` exists with `{ "presets": ["next/babel"] }`
 - [ ] No `vite.config.*` files exist
 - [ ] No root `index.html` exists
 - [ ] `grep -r "next/font" src/` returns nothing
