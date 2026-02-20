@@ -52,6 +52,8 @@ export function createProxy(state: NitroState) {
 
       if (state.clientCacheTtl > 0) {
         res.headers.set('Cache-Control', `max-age=${state.clientCacheTtl}`);
+      } else {
+        res.headers.set('Cache-Control', 'no-store');
       }
     }
 
