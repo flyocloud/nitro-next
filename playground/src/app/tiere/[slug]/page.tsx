@@ -24,15 +24,17 @@ export const generateMetadata = (props: RouteParams) =>
     nitroEntityGenerateMetadata(props, { resolver });
 
 export default function Page(props: RouteParams) {
-    return nitroEntityRoute(props, {
-        resolver,
-        render: (entity: Entity) => (
-            <div>
-                <FlyoMetric entity={entity} />
-                <h1>{entity.entity?.entity_title}</h1>
-                <p>{entity.entity?.entity_teaser}</p>
-                <pre>{JSON.stringify(entity, null, 2)}</pre>
-            </div>
-        )
-    });
+  return nitroEntityRoute(props, {
+    resolver,
+    render: (entity: Entity) => {
+      return (
+        <div>
+          <FlyoMetric entity={entity} />
+          <h1>{entity.entity?.entity_title}</h1>
+          <p>{entity.entity?.entity_teaser}</p>
+          <pre>{JSON.stringify(entity, null, 2)}</pre>
+        </div>
+      );
+    },
+  });
 }
