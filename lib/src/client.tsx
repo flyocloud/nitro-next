@@ -15,7 +15,7 @@ export const isProd = process.env.NODE_ENV === 'production';
 /**
  * Type for WYSIWYG node structure
  */
-interface WysiwygNode {
+export interface WysiwygNode {
   type: string;
   content?: WysiwygNode[];
   [key: string]: unknown;
@@ -24,7 +24,7 @@ interface WysiwygNode {
 /**
  * Type for WYSIWYG JSON that can be a node, array of nodes, or doc structure
  */
-type WysiwygJson = WysiwygNode | WysiwygNode[] | { type: 'doc'; content: WysiwygNode[] };
+export type WysiwygJson = WysiwygNode | WysiwygNode[] | { type: 'doc'; content: WysiwygNode[] };
 
 /**
  * Helper function to get editable props
@@ -96,6 +96,13 @@ export function FlyoClientWrapper({
 /**
  * WYSIWYG component for rendering ProseMirror/TipTap JSON content
  * 
+ * Uses the `wysiwyg()` function from `@flyo/nitro-js-bridge` to convert
+ * nodes to HTML. All consecutive non-custom nodes are joined into a single
+ * HTML string so no extra wrapper `<div>` elements are added around each node.
+ * 
+ * The component wraps all output in a single `<div>` with an optional
+ * `className` (defaults to `"wysiwyg"`).
+ * 
  * @example
  * ```tsx
  * import { FlyoWysiwyg } from '@flyo/nitro-next/client';
@@ -105,6 +112,7 @@ export function FlyoClientWrapper({
  *   return (
  *     <FlyoWysiwyg 
  *       json={block.content.json} 
+ *       className="wysiwyg"
  *       components={{
  *         image: CustomImage
  *       }} 
@@ -115,9 +123,11 @@ export function FlyoClientWrapper({
  */
 export function FlyoWysiwyg({
   json,
+  className = 'wysiwyg',
   components = {},
 }: {
   json: WysiwygJson;
+  className?: string;
   components?: Record<string, React.ComponentType<{ node: WysiwygNode }>>;
 }) {
   let nodes: WysiwygNode[] = [];
@@ -132,18 +142,42 @@ export function FlyoWysiwyg({
     }
   }
 
+  // If no custom components are provided, render all nodes as a single HTML block
+  const hasCustomComponents = nodes.some((node) => components[node.type]);
+
+  if (!hasCustomComponents) {
+    const html = nodes.map((node) => wysiwyg(node)).join('');
+    return <div className={className} dangerouslySetInnerHTML={{ __html: html }} />;
+  }
+
+  // When custom components are used, group consecutive non-custom nodes
+  // into single HTML blocks to avoid extra wrapper elements.
+  const groups: ({ type: 'custom'; component: React.ComponentType<{ node: WysiwygNode }>; node: WysiwygNode } | { type: 'html'; html: string })[] = [];
+
+  for (const node of nodes) {
+    const Component = components[node.type];
+    if (Component) {
+      groups.push({ type: 'custom', component: Component, node });
+    } else {
+      const html = wysiwyg(node);
+      const last = groups[groups.length - 1];
+      if (last && last.type === 'html') {
+        last.html += html;
+      } else {
+        groups.push({ type: 'html', html });
+      }
+    }
+  }
+
   return (
-    <>
-      {nodes.map((node: WysiwygNode, index: number) => {
-        const Component = components[node.type];
-        if (Component) {
-          return <Component key={index} node={node} />;
+    <div className={className}>
+      {groups.map((group, index) => {
+        if (group.type === 'custom') {
+          return <group.component key={index} node={group.node} />;
         }
-        
-        const html = wysiwyg(node);
-        return <div key={index} dangerouslySetInnerHTML={{ __html: html }} />;
+        return <div key={index} dangerouslySetInnerHTML={{ __html: group.html }} />;
       })}
-    </>
+    </div>
   );
 }
 
