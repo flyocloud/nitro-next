@@ -156,6 +156,37 @@ export {
 } from "@flyo/nitro-next/server";
 ```
 
+#### Custom Page Rendering
+
+If you need to access the page data for custom logic (e.g. reading page properties, adding conditional wrappers, passing data to other components), use `nitroPageResolveRoute` instead of the one-liner re-export:
+
+```tsx
+// app/[[...slug]]/page.tsx
+import { nitroPageResolveRoute, NitroPage, nitroPageGenerateMetadata } from '@flyo/nitro-next/server';
+
+// Metadata still works with the standard helper
+export const generateMetadata = nitroPageGenerateMetadata;
+
+export default async function Page(props: { params: Promise<{ slug?: string[] }> }) {
+  const { page, path, cfg } = await nitroPageResolveRoute(props);
+
+  // Access page data before rendering
+  // page - the full Page object (page.title, page.meta_json, page.json, etc.)
+  // path - the resolved URL path string
+  // cfg  - the Flyo ConfigResponse
+
+  return (
+    <div>
+      <h1>{page.title}</h1>
+      {/* Render all blocks from the page */}
+      <NitroPage page={page} />
+    </div>
+  );
+}
+```
+
+The `nitroPageResolveRoute` function is React-cached — calling it in both `generateMetadata` and your page component will only trigger a single API request.
+
 ### 6. Create Custom Components
 
 Create custom components for your Flyo blocks. Each component receives a `block` object containing the content from your CMS.

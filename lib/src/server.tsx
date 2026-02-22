@@ -147,10 +147,22 @@ type EntityRouteParams<T = any> = {
 };
 
 /**
- * Internal helper to resolve Nitro page from route params
- * Uses React cache to avoid duplicate fetching
+ * Resolve a Nitro page from route params
+ * Uses React cache to avoid duplicate fetching.
+ * Use this when you need access to the page data for custom rendering logic.
+ * 
+ * @example
+ * ```tsx
+ * // app/[[...slug]]/page.tsx
+ * import { nitroPageResolveRoute, NitroPage } from '@flyo/nitro-next/server';
+ * 
+ * export default async function Page(props: { params: Promise<{ slug?: string[] }> }) {
+ *   const { page, cfg } = await nitroPageResolveRoute(props);
+ *   return <NitroPage page={page} />;
+ * }
+ * ```
  */
-const resolveNitroRoute = cache(async ({ params }: RouteParams) => {
+export const nitroPageResolveRoute = cache(async ({ params }: RouteParams) => {
   const { slug } = await params;
   const path = slug?.join('/') ?? '';
 
@@ -420,7 +432,7 @@ export function NitroSlot({
  * ```
  */
 export async function nitroPageRoute(props: RouteParams) {
-  const { page } = await resolveNitroRoute(props);
+  const { page } = await nitroPageResolveRoute(props);
   return <NitroPage page={page} />;
 }
 
@@ -438,7 +450,7 @@ export async function nitroPageRoute(props: RouteParams) {
 export async function nitroPageGenerateMetadata(
   props: RouteParams
 ): Promise<Metadata> {
-  const { page } = await resolveNitroRoute(props);
+  const { page } = await nitroPageResolveRoute(props);
 
   // Extract meta information from page
   const meta = page.meta_json;

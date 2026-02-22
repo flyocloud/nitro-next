@@ -13,6 +13,7 @@ export {
   getNitroSitemap,
   getNitroSearch,
   // Route helpers for Next.js app router - Pages
+  nitroPageResolveRoute,
   nitroPageRoute,
   nitroPageGenerateMetadata,
   nitroPageGenerateStaticParams,
