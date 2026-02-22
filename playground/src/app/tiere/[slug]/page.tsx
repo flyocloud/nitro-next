@@ -2,6 +2,7 @@ import {
     nitroEntityRoute, 
     nitroEntityGenerateMetadata, 
     getNitroEntities,
+    NitroEntityJsonLd,
     type EntityResolver
 } from "@flyo/nitro-next/server";
 import { FlyoMetric } from "@flyo/nitro-next/client";
@@ -29,6 +30,7 @@ export default function Page(props: RouteParams) {
     render: (entity: Entity) => {
       return (
         <div>
+          <NitroEntityJsonLd entity={entity} />
           <FlyoMetric entity={entity} />
           <h1>{entity.entity?.entity_title}</h1>
           <p>{entity.entity?.entity_teaser}</p>

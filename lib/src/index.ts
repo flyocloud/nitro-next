@@ -4,6 +4,7 @@ export {
   NitroPage,
   NitroSlot,
   NitroDebugInfo,
+  NitroEntityJsonLd,
   initNitro,
   getNitro,
   getNitroConfig,

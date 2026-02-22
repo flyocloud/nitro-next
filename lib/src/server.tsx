@@ -285,6 +285,40 @@ function createCachedEntityResolver<T>(
 
 
 /**
+ * Renders a JSON-LD structured data script tag from an Entity's jsonld field.
+ * Safely escapes HTML entities to prevent XSS attacks.
+ * Returns null if the entity has no jsonld data.
+ * 
+ * @example
+ * ```tsx
+ * import { NitroEntityJsonLd } from '@flyo/nitro-next/server';
+ * 
+ * export default function BlogPost({ entity }: { entity: Entity }) {
+ *   return (
+ *     <>
+ *       <NitroEntityJsonLd entity={entity} />
+ *       <h1>{entity.entity?.entity_title}</h1>
+ *     </>
+ *   );
+ * }
+ * ```
+ */
+export function NitroEntityJsonLd({ entity }: { entity: Entity }) {
+  if (!entity?.jsonld) {
+    return null;
+  }
+
+  return (
+    <script
+      type="application/ld+json"
+      dangerouslySetInnerHTML={{
+        __html: JSON.stringify(entity.jsonld).replace(/</g, '\\u003c'),
+      }}
+    />
+  );
+}
+
+/**
  * NitroPage component renders all blocks from a Flyo page
  */
 export function NitroPage({

@@ -324,6 +324,7 @@ import {
   nitroEntityRoute, 
   nitroEntityGenerateMetadata, 
   getNitroEntities,
+  NitroEntityJsonLd,
   type EntityResolver
 } from "@flyo/nitro-next/server";
 import { FlyoMetric } from "@flyo/nitro-next/client";
@@ -352,6 +353,7 @@ export default function BlogPost(props: RouteParams) {
     resolver,
     render: (entity: Entity) => (
       <>
+        <NitroEntityJsonLd entity={entity} />
         <FlyoMetric entity={entity} />
         <article>
           <h1>{entity.entity?.entity_title}</h1>
@@ -373,6 +375,7 @@ import {
   nitroEntityRoute, 
   nitroEntityGenerateMetadata, 
   getNitroEntities,
+  NitroEntityJsonLd,
   type Entity,
   type EntityResolver
 } from "@flyo/nitro-next/server";
@@ -395,6 +398,7 @@ export default function Item(props: RouteParams) {
     resolver,
     render: (entity: Entity) => (
       <>
+        <NitroEntityJsonLd entity={entity} />
         <FlyoMetric entity={entity} />
         <div>
           <h1>{entity.entity?.entity_title}</h1>
@@ -414,6 +418,7 @@ import {
   nitroEntityRoute, 
   nitroEntityGenerateMetadata, 
   getNitroEntities,
+  NitroEntityJsonLd,
   type Entity,
   type EntityResolver
 } from "@flyo/nitro-next/server";
@@ -440,6 +445,7 @@ export default function Product(props: RouteParams) {
     resolver,
     render: (entity: Entity) => (
       <>
+        <NitroEntityJsonLd entity={entity} />
         <FlyoMetric entity={entity} />
         <div>
           <h1>{entity.entity?.entity_title}</h1>
@@ -602,6 +608,10 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
 - **`NitroSlot`** – Renders nested blocks from a slot. Used for recursive block rendering when blocks contain slots with child blocks.
   ```tsx
   import { NitroSlot } from '@flyo/nitro-next/server';
+  ```
+- **`NitroEntityJsonLd`** – Server component that renders a JSON-LD `<script>` tag from an Entity's `jsonld` field for structured data / SEO. Safely escapes HTML to prevent XSS. Returns `null` if no jsonld data exists.
+  ```tsx
+  import { NitroEntityJsonLd } from '@flyo/nitro-next/server';
   ```
 - **`NitroDebugInfo`** – Server component that outputs debug information about the Nitro setup as an HTML comment. Includes environment, API version, token type, and deployment details.
   ```tsx
