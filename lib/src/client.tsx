@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { highlightAndClick, wysiwyg, reload} from '@flyo/nitro-js-bridge';
+import { highlightAndClick, wysiwyg, reload, scrollTo} from '@flyo/nitro-js-bridge';
 import { Block, Entity } from "@flyo/nitro-typescript";
 import type { ImageLoaderProps } from 'next/image';
 
@@ -50,6 +50,8 @@ export function FlyoClientWrapper({
     }
 
     reload();
+    
+    scrollTo();
 
     const wireAll = () => {
       const elements = document.querySelectorAll('[data-flyo-uid]');
