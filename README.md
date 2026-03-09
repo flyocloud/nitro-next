@@ -187,6 +187,44 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
 
 The `nitroPageResolveRoute` function is React-cached — calling it in both `generateMetadata` and your page component will only trigger a single API request.
 
+#### Caveat: Parallel Routes Must Initialize Config Per Route
+
+If you use parallel routes (for example `@title`) and call Nitro helpers like `nitroPageResolveRoute`, import your `flyo.config` in **every** route file.
+
+Next.js does not guarantee module execution order between parallel routes. Without importing the config in each route module, one route can resolve before Nitro is initialized and the configuration token can be empty.
+
+Example `page.tsx` (trimmed):
+
+```tsx
+import '../../../flyo.config';
+import {
+  NitroPage,
+  nitroPageGenerateMetadata,
+  nitroPageResolveRoute,
+} from '@flyo/nitro-next/server';
+
+export const generateMetadata = nitroPageGenerateMetadata;
+
+export default async function Page(props: { params: Promise<{ slug?: string[] }> }) {
+  const { page } = await nitroPageResolveRoute(props);
+  return <NitroPage page={page} />;
+}
+```
+
+Example parallel route `@title` (trimmed):
+
+```tsx
+import '../../../flyo.config';
+import { nitroPageResolveRoute } from '@flyo/nitro-next/server';
+
+export default async function TitlePage(props: { params: Promise<{ slug?: string[] }> }) {
+  const { page } = await nitroPageResolveRoute(props);
+  return <>{page.title}</>;
+}
+```
+
+If you enable `generateStaticParams`, only do this for production builds. Enabling it in preview/live edit setups will pre-render all pages and disable live preview behavior.
+
 ### 6. Create Custom Components
 
 Create custom components for your Flyo blocks. Each component receives a `block` object containing the content from your CMS.
