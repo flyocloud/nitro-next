@@ -100,16 +100,35 @@ The proxy middleware:
 Wrap your application with the provider in `app/layout.tsx`.
 
 ```tsx
+import Link from 'next/link';
 import { Flyo } from '@/flyo.config';
 import { getNitroConfig, NitroDebugInfo } from '@flyo/nitro-next/server';
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const config = await getNitroConfig();
+  const navItems = config?.containers?.nav?.items ?? [];
   
   return (
     <Flyo>
       <html>
         <body>
+          <header>
+            <nav>
+              <ul className="flex gap-6">
+                {navItems.map((item, index) => (
+                  <li key={index}>
+                    <Link
+                      href={item.href}
+                      target={item.target}
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </header>
+
           <NitroDebugInfo config={config} />
           {children}
         </body>
@@ -118,6 +137,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   );
 }
 ```
+
+In this example, the navigation is read from `config.containers.nav` and rendered in the layout header.
+Make sure your Flyo container key is `nav` (or adjust the key accordingly).
 
 The `NitroDebugInfo` component outputs debug information as an HTML comment, including:
 - Live edit status
