@@ -299,7 +299,7 @@ export default function MyComponent({ block }) {
 Create a custom component for specific node types:
 
 ```tsx
-// components/CustomImage.tsx
+// components/wysiwyg/CustomImage.tsx
 'use client';
 
 interface ImageNode {
@@ -326,27 +326,48 @@ export default function CustomImage({ node }: ImageNode) {
 }
 ```
 
-Then use it with the WYSIWYG component:
+**Recommended pattern:** create a project-level `AppWysiwyg` wrapper once.
+Register your custom node components there and keep a default class (for example `className="wysiwyg"`) so you can reuse the same setup everywhere.
 
 ```tsx
+// components/wysiwyg/AppWysiwyg.tsx
 'use client';
 
-import { FlyoWysiwyg } from '@flyo/nitro-next/client';
-import CustomImage from './components/CustomImage';
+import { FlyoWysiwyg, type WysiwygJson } from '@flyo/nitro-next/client';
+import CustomImage from './CustomImage';
 
-export default function MyComponent({ block }) {
+export function AppWysiwyg({
+  json,
+}: {
+  json: WysiwygJson;
+}) {
   return (
-    <FlyoWysiwyg 
-      json={block.content.json} 
+    <FlyoWysiwyg
+      json={json}
+      className="wysiwyg"
       components={{
-        image: CustomImage
-      }} 
+        image: CustomImage,
+      }}
     />
   );
 }
 ```
 
-The component will use your custom `CustomImage` component for all `image` nodes, and render all other nodes using the default WYSIWYG renderer.
+Use your wrapper directly in pages/components:
+
+```tsx
+'use client';
+
+import { AppWysiwyg } from './components/wysiwyg/AppWysiwyg';
+
+export default function MyComponent({ block }) {
+  return <AppWysiwyg json={block.content.json} />;
+}
+```
+
+This keeps custom WYSIWYG node registration centralized and consistent across your app.
+You can still override styles per usage, for example:
+`<AppWysiwyg json={block.content.json} className="wysiwyg article-body" />`.
 
 ### 8. Image Optimization with Flyo CDN
 
