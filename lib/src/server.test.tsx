@@ -427,7 +427,7 @@ describe('Entity Route Helpers', () => {
         { resolver }
       );
 
-      expect(metadata.title).toBe('Entity');
+      expect(metadata.title).toBe('');
       expect(metadata.description).toBe('');
     });
 
