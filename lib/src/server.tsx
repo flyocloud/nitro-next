@@ -455,7 +455,7 @@ export async function nitroPageGenerateMetadata(
   // Extract meta information from page
   const meta = page.meta_json;
   
-  const title = meta?.title ?? page.title ?? 'Page';
+  const title = meta?.title || page.title || '';
   const description = meta?.description ?? '';
   const image = meta?.image ?? '';
 
@@ -587,7 +587,7 @@ export async function nitroEntityGenerateMetadata<T = any>(
   const cachedResolver = createCachedEntityResolver(options.resolver);
   const entity = await cachedResolver(props);
 
-  const title = entity.entity?.entity_title ?? 'Entity';
+  const title = entity.entity?.entity_title || '';
   const description = entity.entity?.entity_teaser ?? '';
   const image = entity.entity?.entity_image ?? '';
 
