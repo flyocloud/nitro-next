@@ -255,3 +255,47 @@ export function FlyoMetric({ entity }: { entity: Entity }) {
   // This component doesn't render anything
   return null;
 }
+
+/**
+ * A thin client wrapper that applies `editable()` to a root element while
+ * allowing server-rendered children (e.g. `NitroSlot`) to be passed in.
+ *
+ * In Next.js, a file marked `'use client'` turns all of its imports into
+ * client modules, so you cannot import server-only components like
+ * `NitroSlot` directly. The workaround is to keep the server part separate
+ * and pass it into this client wrapper via `children`.
+ *
+ * @example
+ * ```tsx
+ * // components/HeroBanner.tsx  (server component – no 'use client')
+ * import { Block } from '@flyo/nitro-typescript';
+ * import { NitroSlot } from '@flyo/nitro-next/server';
+ * import { EditableSection } from '@flyo/nitro-next/client';
+ *
+ * export function HeroBanner({ block }: { block: Block }) {
+ *   return (
+ *     <EditableSection block={block} className="hero">
+ *       <h2>{block?.content?.title}</h2>
+ *       <NitroSlot slot={block.slots?.content} />
+ *     </EditableSection>
+ *   );
+ * }
+ * ```
+ */
+export function EditableSection({
+  block,
+  children,
+  className,
+  as: Tag = 'section',
+}: {
+  block: Block;
+  children: React.ReactNode;
+  className?: string;
+  as?: React.ElementType;
+}) {
+  return (
+    <Tag {...editable(block)} className={className}>
+      {children}
+    </Tag>
+  );
+}

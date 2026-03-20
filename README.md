@@ -423,6 +423,43 @@ The `NitroSlot` component automatically handles:
 - Recursively rendering each block using `NitroBlock`
 - Supporting unlimited nesting depth
 
+#### Combining `editable()` with Slots
+
+Because `editable()` requires `'use client'` and `NitroSlot` is server-only, you cannot use both in the same file. The `EditableSection` component solves this by acting as a thin client wrapper that applies the editable data attribute, while accepting server-rendered children (including `NitroSlot`) via the `children` prop.
+
+This works because Next.js supports passing server-rendered React trees into client components through props like `children`.
+
+```tsx
+// components/HeroBanner.tsx  (server component – no 'use client' needed)
+import { Block } from '@flyo/nitro-typescript';
+import { NitroSlot } from '@flyo/nitro-next/server';
+import { EditableSection } from '@flyo/nitro-next/client';
+
+export function HeroBanner({ block }: { block: Block }) {
+  return (
+    <EditableSection block={block} className="bg-gray-200 p-8 rounded-lg text-center">
+      <h2 className="text-3xl font-bold mb-4">
+        {block?.content?.title}
+      </h2>
+      <p className="text-lg mb-6">
+        {block?.content?.teaser}
+      </p>
+      <NitroSlot slot={block.slots?.content} />
+    </EditableSection>
+  );
+}
+```
+
+`EditableSection` accepts an optional `as` prop to change the wrapper element (defaults to `<section>`):
+
+```tsx
+<EditableSection block={block} as="div" className="card">
+  {/* ... */}
+</EditableSection>
+```
+
+> **Why this works:** Only the minimal wrapper becomes a client component. The heavy recursive slot rendering stays on the server. Props passed into a client component must be serializable — plain CMS JSON objects like `block` are fine.
+
 ### 10. Entity Detail Pages
 
 Nitro provides flexible helpers for creating entity detail pages with any route structure. You define a **resolver function** that fetches the entity from your route params, and the library handles caching and rendering.
@@ -653,6 +690,10 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
 - **`FlyoMetric`** – Component for tracking entity metrics in production. Automatically sends a metric tracking request to the Flyo API when in production environment and the entity has a metric API URL configured.
   ```tsx
   import { FlyoMetric } from '@flyo/nitro-next/client';
+  ```
+- **`EditableSection`** – Thin client wrapper that applies `editable()` to a root element while accepting server-rendered children (e.g. `NitroSlot`). Use this when you need both `editable()` and slots in the same component. Accepts an optional `as` prop to change the wrapper element (defaults to `<section>`).
+  ```tsx
+  import { EditableSection } from '@flyo/nitro-next/client';
   ```
 - **`isProd`** – Constant that checks if the current environment is production (`process.env.NODE_ENV === 'production'`).
   ```tsx

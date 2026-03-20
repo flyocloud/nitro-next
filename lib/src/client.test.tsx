@@ -1,7 +1,7 @@
 import React from 'react';
 import '@testing-library/jest-dom';
 import { render } from '@testing-library/react';
-import { FlyoWysiwyg, WysiwygNode, WysiwygJson } from './client';
+import { FlyoWysiwyg, WysiwygNode, WysiwygJson, EditableSection } from './client';
 
 // Mock @flyo/nitro-js-bridge – re-implement the real wysiwyg renderer so
 // tests exercise the actual HTML output the component will produce.
@@ -333,5 +333,88 @@ describe('FlyoWysiwyg', () => {
     const json: WysiwygJson = { type: 'doc', content: [] };
     const { container } = render(<FlyoWysiwyg json={json} />);
     expect(container.firstElementChild!.innerHTML).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EditableSection
+// ---------------------------------------------------------------------------
+
+describe('EditableSection', () => {
+  it('renders a <section> by default with editable data attribute', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const block = { uid: 'abc-123' } as any;
+    const { container } = render(
+      <EditableSection block={block}>
+        <p>child content</p>
+      </EditableSection>
+    );
+    const section = container.firstElementChild!;
+    expect(section.tagName).toBe('SECTION');
+    expect(section.getAttribute('data-flyo-uid')).toBe('abc-123');
+    expect(section.querySelector('p')!.textContent).toBe('child content');
+  });
+
+  it('applies className to the wrapper element', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const block = { uid: 'x' } as any;
+    const { container } = render(
+      <EditableSection block={block} className="hero bg-white">
+        <span>hi</span>
+      </EditableSection>
+    );
+    expect(container.firstElementChild!.className).toBe('hero bg-white');
+  });
+
+  it('renders with a custom element via the "as" prop', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const block = { uid: 'div-test' } as any;
+    const { container } = render(
+      <EditableSection block={block} as="div">
+        <span>inside div</span>
+      </EditableSection>
+    );
+    const el = container.firstElementChild!;
+    expect(el.tagName).toBe('DIV');
+    expect(el.getAttribute('data-flyo-uid')).toBe('div-test');
+  });
+
+  it('omits data-flyo-uid when block has no uid', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const block = {} as any;
+    const { container } = render(
+      <EditableSection block={block}>
+        <p>no uid</p>
+      </EditableSection>
+    );
+    expect(container.firstElementChild!.hasAttribute('data-flyo-uid')).toBe(false);
+  });
+
+  it('omits data-flyo-uid when uid is empty string', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const block = { uid: '  ' } as any;
+    const { container } = render(
+      <EditableSection block={block}>
+        <p>blank uid</p>
+      </EditableSection>
+    );
+    expect(container.firstElementChild!.hasAttribute('data-flyo-uid')).toBe(false);
+  });
+
+  it('passes server-rendered children through unchanged', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const block = { uid: 'slot-test' } as any;
+    const { container } = render(
+      <EditableSection block={block}>
+        <h2>Title</h2>
+        <div data-testid="slot-placeholder">
+          <p>Slot child 1</p>
+          <p>Slot child 2</p>
+        </div>
+      </EditableSection>
+    );
+    const section = container.firstElementChild!;
+    expect(section.querySelector('h2')!.textContent).toBe('Title');
+    expect(section.querySelectorAll('[data-testid="slot-placeholder"] p')).toHaveLength(2);
   });
 });
