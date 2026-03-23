@@ -1,41 +1,31 @@
 import { NextResponse } from 'next/server';
-import type { NitroState } from './server';
+import type { FlyoInstance } from './server';
 
 /**
  * Nitro Next.js Proxy Factory
- * 
+ *
  * Creates a Next.js middleware that handles cache control headers.
- * Uses cache TTL values from the Nitro configuration state.
- * 
- * @param state The Nitro state containing cache configuration
+ * Uses cache TTL values from the Flyo instance's configuration state.
+ *
+ * @param flyo The Flyo instance returned by initNitro()
  * @returns Next.js middleware function
- * 
+ *
  * @example
  * ```ts
  * // src/middleware.ts
  * import { createProxy } from '@flyo/nitro-next/proxy';
- * import { flyoConfig } from './flyo.config';
- * 
- * export default createProxy(flyoConfig());
- * 
+ * import { flyo } from './flyo.config';
+ *
+ * export default createProxy(flyo);
+ *
  * export const config = {
  *   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
  * };
  * ```
- * 
- * @example
- * ```ts
- * // flyo.config.tsx
- * export const flyoConfig = initNitro({
- *   accessToken: process.env.FLYO_ACCESS_TOKEN!,
- *   baseUrl: process.env.SITE_URL || 'http://localhost:3000',
- *   liveEdit: process.env.FLYO_LIVE_EDIT === 'true',
- *   serverCacheTtl: 1200, // 20 minutes
- *   clientCacheTtl: 900,  // 15 minutes
- * });
- * ```
  */
-export function createProxy(state: NitroState) {
+export function createProxy(flyo: FlyoInstance) {
+  const { state } = flyo;
+
   return function proxy() {
     const res = NextResponse.next();
 

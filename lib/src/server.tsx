@@ -15,57 +15,87 @@ import {
 } from '@flyo/nitro-typescript';
 
 /**
- * Interface for Nitro configuration state
+ * Read-only configuration state
  */
 export interface NitroState {
-  configuration: Configuration | null;
-  accessToken: string | null;
-  lang: string | null;
-  baseUrl: string | null;
+  readonly accessToken: string;
+  readonly lang: string | null;
+  readonly baseUrl: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  components: Record<string, any>;
-  showMissingComponentAlert: boolean;
-  liveEdit: boolean;
-  serverCacheTtl: number;
-  clientCacheTtl: number;
+  readonly components: Record<string, any>;
+  readonly showMissingComponentAlert: boolean;
+  readonly liveEdit: boolean;
+  readonly serverCacheTtl: number;
+  readonly clientCacheTtl: number;
 }
 
 /**
- * Global Nitro state - shared across server and middleware
+ * Route params type for Next.js catch-all routes
  */
-export const globalNitroState: NitroState = {
-  configuration: null,
-  accessToken: null,
-  lang: null,
-  baseUrl: null,
-  components: {},
-  showMissingComponentAlert: false,
-  liveEdit: false,
-  serverCacheTtl: 1200,
-  clientCacheTtl: 900
+type RouteParams = {
+  params: Promise<{ slug?: string[] }>;
 };
 
 /**
- * Access the Nitro configuration state
- * Can be used anywhere: server components, middlewares, API routes, etc.
- * Must be called after initNitro() has been initialized.
- * 
- * @throws {Error} If Nitro has not been initialized with initNitro()
- * 
- * @example
- * ```ts
- * const state = getNitro();
- * const { configuration, lang, components } = state;
- * ```
+ * Generic route params type for entity routes
  */
-export function getNitro(): NitroState {
-  if (!globalNitroState.configuration) {
-    throw new Error('Nitro has not been initialized. Make sure to call initNitro() first.');
-  }
-  return globalNitroState;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type EntityRouteParams<T = any> = {
+  params: Promise<T>;
+};
+
+/**
+ * Entity resolver function type
+ * Users provide this to resolve entities from their route params
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type EntityResolver<T = any> = (params: Promise<T>) => Promise<Entity>;
+
+/**
+ * The Flyo instance returned by initNitro().
+ * Carries all API access methods and configuration state.
+ */
+export interface FlyoInstance {
+  /** Read-only configuration state */
+  readonly state: NitroState;
+  /** Fetch and cache the Nitro CMS configuration (React-cached per request) */
+  getNitroConfig(): Promise<ConfigResponse>;
+  /** Create a PagesApi client */
+  getNitroPages(): PagesApi;
+  /** Create an EntitiesApi client */
+  getNitroEntities(): EntitiesApi;
+  /** Create a SitemapApi client */
+  getNitroSitemap(): SitemapApi;
+  /** Create a SearchApi client */
+  getNitroSearch(): SearchApi;
+  /** Resolve a page from catch-all route params (React-cached per request) */
+  pageResolveRoute(props: RouteParams): Promise<{ page: Page; path: string; cfg: ConfigResponse }>;
+  /** Generate a Next.js sitemap from Flyo Nitro content */
+  sitemap(): Promise<MetadataRoute.Sitemap>;
 }
 
-export const initNitro = ({
+/**
+ * Initialize and return a FlyoInstance.
+ *
+ * Call once in your flyo.config.tsx and export the result.
+ * The returned object carries all methods bound to the configuration,
+ * eliminating the need for global state.
+ *
+ * @example
+ * ```tsx
+ * // flyo.config.tsx
+ * import { initNitro } from '@flyo/nitro-next/server';
+ *
+ * export const flyo = initNitro({
+ *   accessToken: process.env.FLYO_ACCESS_TOKEN || '',
+ *   lang: 'en',
+ *   baseUrl: process.env.SITE_URL || 'http://localhost:3000',
+ *   liveEdit: process.env.FLYO_LIVE_EDIT === 'true',
+ *   components: { HeroBanner, Text },
+ * });
+ * ```
+ */
+export function initNitro({
   accessToken,
   lang,
   baseUrl,
@@ -78,124 +108,106 @@ export const initNitro = ({
   accessToken: string;
   lang?: string;
   baseUrl?: string;
-  components?: object;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  components?: Record<string, any>;
   showMissingComponentAlert?: boolean;
   liveEdit?: boolean;
   serverCacheTtl?: number;
   clientCacheTtl?: number;
-}): ( () => NitroState )   => {
+}): FlyoInstance {
+  const configuration = new Configuration({ apiKey: accessToken });
 
-    if (!globalNitroState.configuration) {
-      globalNitroState.configuration = new Configuration({
-        apiKey: accessToken,
-      });
+  const state: NitroState = {
+    accessToken,
+    lang: lang ?? null,
+    baseUrl: baseUrl ?? null,
+    components: components ?? {},
+    showMissingComponentAlert: showMissingComponentAlert ?? liveEdit ?? false,
+    liveEdit: liveEdit ?? false,
+    serverCacheTtl: serverCacheTtl ?? 1200,
+    clientCacheTtl: clientCacheTtl ?? 900,
+  };
+
+  const getNitroConfig = cache(async (): Promise<ConfigResponse> => {
+    const configApi = new ConfigApi(configuration);
+    const useLang = state.lang ?? undefined;
+    return configApi.config({ lang: useLang });
+  });
+
+  const pageResolveRoute = cache(async ({ params }: RouteParams) => {
+    const { slug } = await params;
+    const path = slug?.join('/') ?? '';
+
+    const cfg = await getNitroConfig();
+
+    if (!cfg.pages?.includes(path)) {
+      notFound();
     }
 
-    globalNitroState.accessToken = accessToken;
-    globalNitroState.lang = lang ?? null;
-    globalNitroState.baseUrl = baseUrl ?? null;
-    globalNitroState.components = components ?? {};
-    globalNitroState.showMissingComponentAlert = showMissingComponentAlert ?? liveEdit ?? false;
-    globalNitroState.liveEdit = liveEdit ?? false;
-    globalNitroState.serverCacheTtl = serverCacheTtl ?? 1200;
-    globalNitroState.clientCacheTtl = clientCacheTtl ?? 900;
+    const page = await new PagesApi(configuration)
+      .page({ slug: path })
+      .catch((error: unknown) => {
+        console.error('Error fetching page:', path, error);
+        notFound();
+      });
 
-    return () => globalNitroState;
-}
-
-export const getNitroConfig = cache(async (): Promise<ConfigResponse> => {
-    const state = getNitro();
-
-    const configApi = new ConfigApi(state.configuration!);
-    const useLang = state.lang ?? undefined;
-
-    const config = await configApi.config({ lang: useLang });
-    
-    return config;
-});
-
-export function getNitroPages(): PagesApi {
-  return new PagesApi(getNitro().configuration!);
-}
-
-export function getNitroEntities(): EntitiesApi {
-  return new EntitiesApi(getNitro().configuration!);
-}
-
-export function getNitroSitemap(): SitemapApi {
-  return new SitemapApi(getNitro().configuration!);
-}
-
-export function getNitroSearch(): SearchApi {
-  return new SearchApi(getNitro().configuration!);
-}
-
-/**
- * Route params type for Next.js catch-all routes
- */
-type RouteParams = {
-  params: Promise<{ slug?: string[] }>;
-};
-
-/**
- * Generic route params type for entity routes
- * Allows any param structure from Next.js app router
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type EntityRouteParams<T = any> = {
-  params: Promise<T>;
-};
-
-/**
- * Resolve a Nitro page from route params
- * Uses React cache to avoid duplicate fetching.
- * Use this when you need access to the page data for custom rendering logic.
- * 
- * @example
- * ```tsx
- * // app/[[...slug]]/page.tsx
- * import { nitroPageResolveRoute, NitroPage } from '@flyo/nitro-next/server';
- * 
- * export default async function Page(props: { params: Promise<{ slug?: string[] }> }) {
- *   const { page, cfg } = await nitroPageResolveRoute(props);
- *   return <NitroPage page={page} />;
- * }
- * ```
- */
-export const nitroPageResolveRoute = cache(async ({ params }: RouteParams) => {
-  const { slug } = await params;
-  const path = slug?.join('/') ?? '';
-
-  const cfg = await getNitroConfig();
-
-  if (!cfg.pages?.includes(path)) {
-    notFound();
-  }
-
-  const page = await getNitroPages()
-    .page({ slug: path })
-    .catch((error: unknown) => {
-      console.error('Error fetching page:', path, error);
+    if (!page) {
       notFound();
+    }
+
+    return { page, path, cfg };
+  });
+
+  const sitemap = async (): Promise<MetadataRoute.Sitemap> => {
+    const sitemapApi = new SitemapApi(configuration);
+    const sitemapLang = state.lang ?? undefined;
+
+    if (!state.baseUrl) {
+      throw new Error('baseUrl is not configured. Please set it in initNitro().');
+    }
+
+    const items = await sitemapApi.sitemap({ lang: sitemapLang });
+    const cleanBaseUrl = state.baseUrl.endsWith('/') ? state.baseUrl.slice(0, -1) : state.baseUrl;
+
+    return items.map((item) => {
+      let path = '';
+
+      if (item.routes && typeof item.routes === 'object') {
+        const routeValues = Object.values(item.routes);
+        if (routeValues.length > 0) {
+          path = routeValues[0];
+        }
+      }
+
+      if (!path && item.entity_slug) {
+        path = item.entity_slug;
+      }
+
+      const cleanPath = path && !path.startsWith('/') ? `/${path}` : path;
+
+      return {
+        url: `${cleanBaseUrl}${cleanPath}`,
+        lastModified: new Date(),
+      };
     });
+  };
 
-  if (!page) {
-    notFound();
-  }
+  return {
+    state,
+    getNitroConfig,
+    getNitroPages: () => new PagesApi(configuration),
+    getNitroEntities: () => new EntitiesApi(configuration),
+    getNitroSitemap: () => new SitemapApi(configuration),
+    getNitroSearch: () => new SearchApi(configuration),
+    pageResolveRoute,
+    sitemap,
+  };
+}
 
-  return { page, path, cfg };
-});
-
-/**
- * Entity resolver function type
- * Users provide this to resolve entities from their route params
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type EntityResolver<T = any> = (params: Promise<T>) => Promise<Entity>;
+// ─── Helper ──────────────────────────────────────────────────────────────────
 
 /**
  * Helper function to read environment variables with fallback
- * Checks process.env for server-side environment variables
  */
 const readEnv = (key: string, fallback = ""): string => {
   const value = process.env[key];
@@ -206,25 +218,45 @@ const readEnv = (key: string, fallback = ""): string => {
 };
 
 /**
- * NitroDebugInfo Component
- * 
- * Outputs debug information about the current Nitro/Flyo setup as an HTML comment.
- * This includes environment info, API version, token type, deployment details, etc.
- * 
- * Usage: Add <NitroDebugInfo config={config} /> to your layout to include debug info in the HTML output.
+ * Internal helper to wrap and cache entity resolvers
  */
-export function NitroDebugInfo({ config }: { config: ConfigResponse }) {
-  try {
-    // Get Nitro state
-    const state = getNitro();
+function createCachedEntityResolver<T>(
+  resolver: EntityResolver<T>
+): (props: EntityRouteParams<T>) => Promise<Entity> {
+  return cache(async ({ params }: EntityRouteParams<T>) => {
+    const entity = await resolver(params);
 
-    // Get environment variables
+    if (!entity) {
+      notFound();
+    }
+
+    return entity;
+  });
+}
+
+// ─── Server Components ───────────────────────────────────────────────────────
+
+/**
+ * NitroDebugInfo Component
+ *
+ * Async server component that outputs debug information as an HTML comment.
+ * Resolves config internally from the flyo instance.
+ *
+ * @example
+ * ```tsx
+ * <NitroDebugInfo flyo={flyo} />
+ * ```
+ */
+export async function NitroDebugInfo({ flyo }: { flyo: FlyoInstance }) {
+  try {
+    const config = await flyo.getNitroConfig();
+    const { state } = flyo;
+
     const mode = readEnv("NODE_ENV", "-");
     const vercelDeploymentId = readEnv("VERCEL_DEPLOYMENT_ID", "-");
     const vercelGitCommitSha = readEnv("VERCEL_GIT_COMMIT_SHA", "-");
     const version = readEnv("VERSION", "");
 
-    // Get token from configuration and determine type
     const tokenValue = state.accessToken || "";
     const token = typeof tokenValue === "string" ? tokenValue : "";
     const tokenType = token.startsWith("p-")
@@ -233,10 +265,8 @@ export function NitroDebugInfo({ config }: { config: ConfigResponse }) {
       ? "develop"
       : "unknown";
 
-    // Get live edit / debug status
     const debug = state.liveEdit;
 
-    // Get API version from config.nitro
     const apiVersion = config.nitro?.version?.toString() || "-";
     const apiLastUpdate = config.nitro?.updated_at
       ? new Date(config.nitro.updated_at * 1000).toLocaleString("de-CH", {
@@ -248,7 +278,6 @@ export function NitroDebugInfo({ config }: { config: ConfigResponse }) {
         })
       : "-";
 
-    // Build debug info parts
     const debugInfoParts = [
       `liveedit:${debug}`,
       `env:${mode}`,
@@ -265,55 +294,17 @@ export function NitroDebugInfo({ config }: { config: ConfigResponse }) {
 
     const debugInfo = debugInfoParts.join(" | ");
 
-    // Return just the HTML comment as a real HTML comment (not text)
-    // React requires dangerouslySetInnerHTML for raw HTML, so we use an empty template element
-    // which is semantic and doesn't render in the DOM tree
     return (
       <template dangerouslySetInnerHTML={{ __html: `<!-- ${debugInfo} -->` }} suppressHydrationWarning />
     );
-  } catch (error) {
-    // If Nitro is not initialized or there's an error, return empty comment
+  } catch {
     return <template dangerouslySetInnerHTML={{ __html: `<!-- nitro-debug: not initialized -->` }} suppressHydrationWarning />;
   }
 }
 
 /**
- * Internal helper to wrap and cache entity resolvers
- * Ensures the resolver is only called once per unique params
- */
-function createCachedEntityResolver<T>(
-  resolver: EntityResolver<T>
-): (props: EntityRouteParams<T>) => Promise<Entity> {
-  return cache(async ({ params }: EntityRouteParams<T>) => {
-    const entity = await resolver(params);
-    
-    if (!entity) {
-      notFound();
-    }
-    
-    return entity;
-  });
-}
-
-
-/**
  * Renders a JSON-LD structured data script tag from an Entity's jsonld field.
- * Safely escapes HTML entities to prevent XSS attacks.
- * Returns null if the entity has no jsonld data.
- * 
- * @example
- * ```tsx
- * import { NitroEntityJsonLd } from '@flyo/nitro-next/server';
- * 
- * export default function BlogPost({ entity }: { entity: Entity }) {
- *   return (
- *     <>
- *       <NitroEntityJsonLd entity={entity} />
- *       <h1>{entity.entity?.entity_title}</h1>
- *     </>
- *   );
- * }
- * ```
+ * Safely escapes HTML to prevent XSS.
  */
 export function NitroEntityJsonLd({ entity }: { entity: Entity }) {
   if (!entity?.jsonld) {
@@ -331,12 +322,14 @@ export function NitroEntityJsonLd({ entity }: { entity: Entity }) {
 }
 
 /**
- * NitroPage component renders all blocks from a Flyo page
+ * NitroPage renders all blocks from a Flyo page.
  */
 export function NitroPage({
   page,
+  flyo,
 }: {
-  page: Page
+  page: Page;
+  flyo: FlyoInstance;
 }) {
   if (!page?.json || !Array.isArray(page.json)) {
     return null;
@@ -348,29 +341,34 @@ export function NitroPage({
         <NitroBlock
           key={block.uid || index}
           block={block}
+          flyo={flyo}
         />
       ))}
     </>
   );
 }
 
+/**
+ * NitroBlock renders a single block using the registered component.
+ */
 export function NitroBlock({
   block,
+  flyo,
 }: {
-  block: Block
+  block: Block;
+  flyo: FlyoInstance;
 }) {
   if (!block) {
     return null;
   }
 
-  const state = getNitro();
-  const Component = block.component ? state.components[block.component] : undefined;
+  const Component = block.component ? flyo.state.components[block.component] : undefined;
 
   if (Component) {
     return <Component block={block} />;
   }
 
-  if (state.showMissingComponentAlert) {
+  if (flyo.state.showMissingComponentAlert) {
     return (
       <div style={{ border: '1px solid #fff', padding: '1rem', marginBottom: '1rem', backgroundColor: 'red' }}>
         Component <b>{block.component}</b> not found.
@@ -382,17 +380,18 @@ export function NitroBlock({
 }
 
 /**
- * NitroSlot component renders nested blocks from a slot
- * Used for recursive block rendering when blocks contain slots
- * 
+ * NitroSlot renders nested blocks from a slot.
+ * Used for recursive block rendering when blocks contain slots.
+ *
  * @example
  * ```tsx
+ * import { flyo } from '@/flyo.config';
  * import { NitroSlot } from '@flyo/nitro-next/server';
- * 
- * export default function MyComponent({ block }) {
+ *
+ * export function MyComponent({ block }) {
  *   return (
  *     <div>
- *       <NitroSlot slot={block.slots.mysuperslotname} />
+ *       <NitroSlot slot={block.slots?.content} flyo={flyo} />
  *     </div>
  *   );
  * }
@@ -400,10 +399,12 @@ export function NitroBlock({
  */
 export function NitroSlot({
   slot,
+  flyo,
 }: {
   slot?: {
     content?: Block[];
   };
+  flyo: FlyoInstance;
 }) {
   if (!slot?.content || !Array.isArray(slot.content)) {
     return null;
@@ -415,274 +416,189 @@ export function NitroSlot({
         <NitroBlock
           key={block.uid || index}
           block={block}
+          flyo={flyo}
         />
       ))}
     </>
   );
 }
 
+// ─── Factory Functions ───────────────────────────────────────────────────────
+
 /**
- * Default page route handler for Nitro pages
- * Can be re-exported directly from Next.js app routes
- * 
+ * Create a page route handler for Nitro pages.
+ * Returns a Next.js page component function.
+ *
  * @example
- * ```ts
- * // app/[[...slug]]/page.tsx
- * export { nitroPageRoute as default } from '@flyo/nitro-next/server';
+ * ```tsx
+ * import { flyo } from '@/flyo.config';
+ * import { nitroPageRoute } from '@flyo/nitro-next/server';
+ *
+ * export default nitroPageRoute(flyo);
  * ```
  */
-export async function nitroPageRoute(props: RouteParams) {
-  const { page } = await nitroPageResolveRoute(props);
-  return <NitroPage page={page} />;
+export function nitroPageRoute(flyo: FlyoInstance) {
+  async function pageRoute(props: RouteParams) {
+    const { page } = await flyo.pageResolveRoute(props);
+    return <NitroPage page={page} flyo={flyo} />;
+  }
+  return pageRoute;
 }
 
 /**
- * Generate metadata for Nitro pages
- * Provides basic meta tags based on Flyo page data
- * Can be re-exported directly from Next.js app routes
- * 
+ * Create a metadata generator for Nitro pages.
+ * Returns a Next.js generateMetadata function.
+ *
  * @example
- * ```ts
- * // app/[[...slug]]/page.tsx
- * export { nitroPageGenerateMetadata as generateMetadata } from '@flyo/nitro-next/server';
+ * ```tsx
+ * import { flyo } from '@/flyo.config';
+ * import { nitroPageGenerateMetadata } from '@flyo/nitro-next/server';
+ *
+ * export const generateMetadata = nitroPageGenerateMetadata(flyo);
  * ```
  */
-export async function nitroPageGenerateMetadata(
-  props: RouteParams
-): Promise<Metadata> {
-  const { page } = await nitroPageResolveRoute(props);
+export function nitroPageGenerateMetadata(flyo: FlyoInstance) {
+  return async (props: RouteParams): Promise<Metadata> => {
+    const { page } = await flyo.pageResolveRoute(props);
 
-  // Extract meta information from page
-  const meta = page.meta_json;
-  
-  const title = meta?.title || page.title || '';
-  const description = meta?.description ?? '';
-  const image = meta?.image ?? '';
+    const meta = page.meta_json;
+    const title = meta?.title || page.title || '';
+    const description = meta?.description ?? '';
+    const image = meta?.image ?? '';
 
-  const ogImage = image ? `${image}/thumb/1200x630?format=jpg` : undefined;
-  const twImage = image ? `${image}/thumb/1200x600?format=jpg` : undefined;
+    const ogImage = image ? `${image}/thumb/1200x630?format=jpg` : undefined;
+    const twImage = image ? `${image}/thumb/1200x600?format=jpg` : undefined;
 
-  return {
-    title,
-    description,
-    openGraph: {
+    return {
       title,
       description,
-      images: ogImage ? [ogImage] : [],
-      type: 'website',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-      images: twImage ? [twImage] : [],
-    },
+      openGraph: {
+        title,
+        description,
+        images: ogImage ? [ogImage] : [],
+        type: 'website',
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title,
+        description,
+        images: twImage ? [twImage] : [],
+      },
+    };
   };
 }
 
 /**
- * Generate static params for all Nitro pages
- * Enables static site generation (SSG) for all pages
- * Can be re-exported directly from Next.js app routes
- * 
+ * Create a static params generator for Nitro pages.
+ * Returns a Next.js generateStaticParams function.
+ *
  * @example
- * ```ts
- * // app/[[...slug]]/page.tsx
- * export { nitroPageGenerateStaticParams as generateStaticParams } from '@flyo/nitro-next/server';
+ * ```tsx
+ * import { flyo } from '@/flyo.config';
+ * import { nitroPageGenerateStaticParams } from '@flyo/nitro-next/server';
+ *
+ * export const generateStaticParams = nitroPageGenerateStaticParams(flyo);
  * ```
  */
-export async function nitroPageGenerateStaticParams() {
-  const cfg = await getNitroConfig();
-  const pages = cfg.pages ?? [];
+export function nitroPageGenerateStaticParams(flyo: FlyoInstance) {
+  return async () => {
+    const cfg = await flyo.getNitroConfig();
+    const pages = cfg.pages ?? [];
 
-  return pages.map((path: string) => ({
-    slug: path === '' ? undefined : path.split('/'),
-  }));
+    return pages.map((path: string) => ({
+      slug: path === '' ? undefined : path.split('/'),
+    }));
+  };
 }
 
 /**
- * Default entity route handler with custom resolver
- * Flexible solution that works with any route param structure
- * 
+ * Create an entity route handler with a custom resolver.
+ * Returns a Next.js page component function.
+ *
  * @example
- * ```ts
- * // app/blog/[slug]/page.tsx
- * const resolver = async (params: Promise<{ slug: string }>) => {
+ * ```tsx
+ * import { flyo } from '@/flyo.config';
+ * import { nitroEntityRoute } from '@flyo/nitro-next/server';
+ *
+ * const resolver = async (params) => {
  *   const { slug } = await params;
- *   return getNitroEntities().entityBySlug({ slug, typeId: 123 });
+ *   return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
  * };
- * 
- * export default (props) => nitroEntityRoute(props, {
+ *
+ * export default nitroEntityRoute(flyo, {
  *   resolver,
- *   render: (entity) => <h1>{entity.entity?.entity_title}</h1>
+ *   render: (entity) => <h1>{entity.entity?.entity_title}</h1>,
  * });
- * ```
- * 
- * @example
- * ```ts
- * // app/items/[uniqueid]/page.tsx
- * const resolver = async (params: Promise<{ uniqueid: string }>) => {
- *   const { uniqueid } = await params;
- *   return getNitroEntities().entityByUniqueid({ uniqueid });
- * };
- * 
- * export default (props) => nitroEntityRoute(props, { resolver });
- * ```
- * 
- * @example
- * ```ts
- * // app/custom/[whatever]/page.tsx
- * const resolver = async (params: Promise<{ whatever: string }>) => {
- *   const { whatever } = await params;
- *   return getNitroEntities().entityBySlug({ slug: whatever });
- * };
- * 
- * export default (props) => nitroEntityRoute(props, { resolver });
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function nitroEntityRoute<T = any>(
-  props: EntityRouteParams<T>,
+  flyo: FlyoInstance,
   options: {
     resolver: EntityResolver<T>;
     render?: (entity: Entity) => React.ReactNode;
   }
 ) {
   const cachedResolver = createCachedEntityResolver(options.resolver);
-  
-  return (async () => {
+
+  async function entityRoute(props: EntityRouteParams<T>) {
     const entity = await cachedResolver(props);
-    
+
     if (options.render) {
       return options.render(entity);
     }
 
-    // Default simple render - users should provide their own render function
     return <div>{entity.entity?.entity_title}</div>;
-  })();
+  }
+  return entityRoute;
 }
 
 /**
- * Generate metadata for Nitro entities with custom resolver
- * Works with any route param structure
- * 
+ * Create a metadata generator for entity detail pages.
+ * Returns a Next.js generateMetadata function.
+ *
  * @example
- * ```ts
- * // app/blog/[slug]/page.tsx
- * const resolver = async (params: Promise<{ slug: string }>) => {
- *   const { slug } = await params;
- *   return getNitroEntities().entityBySlug({ slug, typeId: 123 });
- * };
- * 
- * export const generateMetadata = (props) => nitroEntityGenerateMetadata(props, { resolver });
+ * ```tsx
+ * import { flyo } from '@/flyo.config';
+ * import { nitroEntityGenerateMetadata } from '@flyo/nitro-next/server';
+ *
+ * export const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
  * ```
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export async function nitroEntityGenerateMetadata<T = any>(
-  props: EntityRouteParams<T>,
+export function nitroEntityGenerateMetadata<T = any>(
+  flyo: FlyoInstance,
   options: {
     resolver: EntityResolver<T>;
   }
-): Promise<Metadata> {
+) {
   const cachedResolver = createCachedEntityResolver(options.resolver);
-  const entity = await cachedResolver(props);
 
-  const title = entity.entity?.entity_title || '';
-  const description = entity.entity?.entity_teaser ?? '';
-  const image = entity.entity?.entity_image ?? '';
+  return async (props: EntityRouteParams<T>): Promise<Metadata> => {
+    const entity = await cachedResolver(props);
 
-  const ogImage = image ? `${image}/thumb/1200x630?format=jpg` : undefined;
-  const twImage = image ? `${image}/thumb/1200x600?format=jpg` : undefined;
+    const title = entity.entity?.entity_title || '';
+    const description = entity.entity?.entity_teaser ?? '';
+    const image = entity.entity?.entity_image ?? '';
 
-  return {
-    title,
-    description,
-    openGraph: {
-      title,
-      description,
-      images: ogImage ? [ogImage] : [],
-      type: 'website',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title,
-      description,
-      images: twImage ? [twImage] : [],
-    },
-  };
-}
-
-/**
- * Generate sitemap for Next.js from Flyo Nitro
- * Fetches all pages and entities from the sitemap endpoint
- * Uses the baseUrl from the Nitro configuration state
- * 
- * @param state The Nitro state containing configuration and baseUrl
- * @returns Promise resolving to Next.js MetadataRoute.Sitemap format
- * 
- * @example
- * ```ts
- * // app/sitemap.ts
- * import { nitroSitemap } from '@flyo/nitro-next/server';
- * import { flyoConfig } from '../flyo.config';
- * 
- * export default async function sitemap() {
- *   return nitroSitemap(flyoConfig());
- * }
- * ```
- * 
- * @example
- * ```ts
- * // flyo.config.tsx
- * export const flyoConfig = initNitro({
- *   accessToken: process.env.FLYO_ACCESS_TOKEN!,
- *   baseUrl: process.env.SITE_URL || 'http://localhost:3000',
- *   lang: 'en',
- * });
- * ```
- */
-export async function nitroSitemap(state: NitroState): Promise<MetadataRoute.Sitemap> {
-  const sitemapApi = getNitroSitemap();
-  const lang = state.lang ?? undefined;
-
-  if (!state.baseUrl) {
-    throw new Error('baseUrl is not configured in Nitro state. Please set it in initNitro().');
-  }
-
-  // Fetch all sitemap entries from Flyo Nitro
-  const items = await sitemapApi.sitemap({ lang });
-
-  const baseUrl = state.baseUrl;
-  
-  // Remove trailing slash from baseUrl for consistency
-  const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-
-  return items.map((item) => {
-    // Prefer routes object if available, otherwise use entity_slug
-    let path = '';
-    
-    if (item.routes && typeof item.routes === 'object') {
-      // Use the first available route from the routes object
-      const routeValues = Object.values(item.routes);
-      if (routeValues.length > 0) {
-        path = routeValues[0];
-      }
-    }
-    
-    // Fallback to entity_slug if no routes found
-    if (!path && item.entity_slug) {
-      path = item.entity_slug;
-    }
-
-    // Ensure path starts with /
-    const cleanPath = path && !path.startsWith('/') ? `/${path}` : path;
-
-    // Convert Unix timestamp to Date if available
-    const lastModified = new Date();
+    const ogImage = image ? `${image}/thumb/1200x630?format=jpg` : undefined;
+    const twImage = image ? `${image}/thumb/1200x600?format=jpg` : undefined;
 
     return {
-      url: `${cleanBaseUrl}${cleanPath}`,
-      lastModified,
+      title,
+      description,
+      openGraph: {
+        title,
+        description,
+        images: ogImage ? [ogImage] : [],
+        type: 'website',
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title,
+        description,
+        images: twImage ? [twImage] : [],
+      },
     };
-  });
+  };
 }

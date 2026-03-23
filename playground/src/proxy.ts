@@ -5,9 +5,9 @@
  */
 
 import { createProxy } from '@flyo/nitro-next/proxy';
-import { flyoConfig } from './flyo.config';
+import { flyo } from './flyo.config';
 
-export default createProxy(flyoConfig());
+export default createProxy(flyo);
 
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],

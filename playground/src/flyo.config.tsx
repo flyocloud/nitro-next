@@ -1,8 +1,8 @@
 /**
  * Flyo Configuration
  * 
- * This file configures the Flyo Nitro CMS integration.
- * Import and use FlyoProvider from this file in your layout.
+ * This file creates the Flyo Nitro instance for the app.
+ * Import `flyo` from this file wherever you need CMS access.
  */
 
 import type { ReactNode } from 'react';
@@ -16,41 +16,27 @@ const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
 const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
 const baseUrl = process.env.SITE_URL || 'http://localhost:3000';
 
-
-export const flyoConfig = initNitro({
-    // API token for authenticating with the Flyo CMS
-    accessToken: accessToken,
-    // Language code for content retrieval
+export const flyo = initNitro({
+    accessToken,
     lang: 'en',
-    // Base URL for your site (used for sitemap generation, canonical URLs, etc.)
-    baseUrl: baseUrl,
-    // Enable live editing mode - when true, wraps your app with FlyoClientWrapper for real-time content updates
-    liveEdit: liveEdit,
-    // Server/CDN cache TTL in seconds (default: 1200 = 20 minutes)
+    baseUrl,
+    liveEdit,
     serverCacheTtl: 1200,
-    // Client browser cache TTL in seconds (default: 900 = 15 minutes)
     clientCacheTtl: 900,
-    // Map of CMS block types to React components - register all custom components here
     components: {
-        HeroBanner: HeroBanner,
-        Text: Text
+        HeroBanner,
+        Text
     }
 });
 
 /**
- * Pre-configured FlyoProvider component
- * 
- * This component initializes the Flyo Nitro CMS with your configuration.
- * Wrap your app with this component in your root layout.
+ * Client wrapper component for live editing support.
+ * Wrap your app with this in the root layout.
  */
-export function Flyo({ children }: { children: ReactNode }) {
-
-    flyoConfig();
-
+export function FlyoProvider({ children }: { children: ReactNode }) {
     if (liveEdit) {
         return <FlyoClientWrapper>{children}</FlyoClientWrapper>;
     }
-
-    return children;
+    return <>{children}</>;
 }
 

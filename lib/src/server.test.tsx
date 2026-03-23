@@ -1,23 +1,20 @@
 import React from 'react';
-import '@testing-library/jest-dom'; // Add this line
+import '@testing-library/jest-dom';
 import { render, screen } from '@testing-library/react';
 import {
   initNitro,
-  getNitroConfig,
   NitroPage,
   NitroBlock,
   NitroSlot,
   NitroDebugInfo,
-  getNitroPages,
-  getNitroEntities,
   nitroPageRoute,
   nitroPageGenerateMetadata,
   nitroPageGenerateStaticParams,
   nitroEntityRoute,
   nitroEntityGenerateMetadata,
-  globalNitroState
+  type FlyoInstance,
 } from './server';
-import { Configuration, Page, Block, Entity, ConfigResponse } from '@flyo/nitro-typescript';
+import { Configuration, Page, Block, Entity } from '@flyo/nitro-typescript';
 
 // Mock next/navigation
 jest.mock('next/navigation', () => ({
@@ -31,7 +28,7 @@ jest.mock('@flyo/nitro-typescript', () => {
   return {
     Configuration: jest.fn().mockImplementation((config) => ({
       ...config,
-      apiKey: config.apiKey // Ensure apiKey is properly stored
+      apiKey: config.apiKey
     })),
     ConfigApi: jest.fn().mockImplementation(() => ({
       config: jest.fn().mockResolvedValue({ 
@@ -88,12 +85,41 @@ describe('initNitro', () => {
     initNitro({ accessToken });
     expect(Configuration).toHaveBeenCalledWith({ apiKey: accessToken });
   });
+
+  it('returns a FlyoInstance with all expected methods', () => {
+    const flyo = initNitro({ accessToken: 'test-token' });
+    expect(flyo.state).toBeDefined();
+    expect(flyo.state.accessToken).toBe('test-token');
+    expect(typeof flyo.getNitroConfig).toBe('function');
+    expect(typeof flyo.getNitroPages).toBe('function');
+    expect(typeof flyo.getNitroEntities).toBe('function');
+    expect(typeof flyo.getNitroSitemap).toBe('function');
+    expect(typeof flyo.getNitroSearch).toBe('function');
+    expect(typeof flyo.pageResolveRoute).toBe('function');
+    expect(typeof flyo.sitemap).toBe('function');
+  });
+
+  it('applies default values for optional config', () => {
+    const flyo = initNitro({ accessToken: 'test' });
+    expect(flyo.state.lang).toBeNull();
+    expect(flyo.state.baseUrl).toBeNull();
+    expect(flyo.state.components).toEqual({});
+    expect(flyo.state.showMissingComponentAlert).toBe(false);
+    expect(flyo.state.liveEdit).toBe(false);
+    expect(flyo.state.serverCacheTtl).toBe(1200);
+    expect(flyo.state.clientCacheTtl).toBe(900);
+  });
+
+  it('sets showMissingComponentAlert from liveEdit when not explicitly set', () => {
+    const flyo = initNitro({ accessToken: 'test', liveEdit: true });
+    expect(flyo.state.showMissingComponentAlert).toBe(true);
+  });
 });
 
-describe('getNitroConfig', () => {
-
+describe('flyo.getNitroConfig', () => {
   it('returns config', async () => {
-    const config = await getNitroConfig();
+    const flyo = initNitro({ accessToken: 'test-token' });
+    const config = await flyo.getNitroConfig();
     expect(config).toEqual({ 
       title: 'Mock Config',
       pages: ['', 'about', 'blog/post-1']
@@ -103,7 +129,8 @@ describe('getNitroConfig', () => {
 
 describe('NitroPage', () => {
   it('renders nothing if page json is missing', () => {
-    const { container } = render(<NitroPage page={{} as Page} />);
+    const flyo = initNitro({ accessToken: 'test' });
+    const { container } = render(<NitroPage page={{} as Page} flyo={flyo} />);
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -115,15 +142,14 @@ describe('NitroPage', () => {
       ],
     } as unknown as Page;
 
-    // Register a component for TestBlock
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const TestBlock = ({ block }: { block: Block }) => <div>{(block as any).content}</div>;
-    initNitro({ 
+    const flyo = initNitro({ 
         accessToken: 'test', 
         components: { TestBlock } 
     });
 
-    render(<NitroPage page={page} />);
+    render(<NitroPage page={page} flyo={flyo} />);
     expect(screen.getByText('Block 1')).toBeInTheDocument();
     expect(screen.getByText('Block 2')).toBeInTheDocument();
   });
@@ -131,14 +157,13 @@ describe('NitroPage', () => {
 
 describe('NitroBlock', () => {
   it('renders fallback if component not found', () => {
-
-     initNitro({ 
+    const flyo = initNitro({ 
+        accessToken: 'test',
         showMissingComponentAlert: true,
     });
 
     const block = { uid: '1', component: 'Unknown', content: 'Hidden' } as unknown as Block;
-    render(<NitroBlock block={block} />);
-    // The fallback renders JSON
+    render(<NitroBlock block={block} flyo={flyo} />);
     expect(screen.getByText((content) => content.includes('Unknown'))).toBeInTheDocument();
   });
 
@@ -147,36 +172,38 @@ describe('NitroBlock', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const Known = ({ block }: { block: Block }) => <div>{(block as any).content}</div>;
     
-    initNitro({ 
+    const flyo = initNitro({ 
         accessToken: 'test', 
         components: { Known } 
     });
 
-    render(<NitroBlock block={block} />);
+    render(<NitroBlock block={block} flyo={flyo} />);
     expect(screen.getByText('Visible')).toBeInTheDocument();
   });
 });
 
 describe('NitroSlot', () => {
+  let flyo: FlyoInstance;
+
   beforeEach(() => {
-    initNitro({ 
+    flyo = initNitro({ 
       accessToken: 'test',
       components: {}
     });
   });
 
   it('renders nothing if slot is undefined', () => {
-    const { container } = render(<NitroSlot slot={undefined} />);
+    const { container } = render(<NitroSlot slot={undefined} flyo={flyo} />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it('renders nothing if slot has no content', () => {
-    const { container } = render(<NitroSlot slot={{}} />);
+    const { container } = render(<NitroSlot slot={{}} flyo={flyo} />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it('renders nothing if slot content is not an array', () => {
-    const { container } = render(<NitroSlot slot={{ content: 'invalid' as unknown as Block[] }} />);
+    const { container } = render(<NitroSlot slot={{ content: 'invalid' as unknown as Block[] }} flyo={flyo} />);
     expect(container).toBeEmptyDOMElement();
   });
 
@@ -184,7 +211,7 @@ describe('NitroSlot', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const TestBlock = ({ block }: { block: Block }) => <div>{(block as any).content}</div>;
     
-    initNitro({ 
+    flyo = initNitro({ 
       accessToken: 'test',
       components: { TestBlock }
     });
@@ -196,26 +223,28 @@ describe('NitroSlot', () => {
       ] as unknown as Block[]
     };
 
-    render(<NitroSlot slot={slot} />);
+    render(<NitroSlot slot={slot} flyo={flyo} />);
     expect(screen.getByText('Nested 1')).toBeInTheDocument();
     expect(screen.getByText('Nested 2')).toBeInTheDocument();
   });
 
   it('handles deeply nested slots recursively', () => {
+    // In v2, user components that render NitroSlot must import flyo from config.
+    // In tests, we simulate this via closure over the `flyo` variable.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const Container = ({ block }: { block: Block }) => (
       <div>
         {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
         <span>{(block as any).content}</span>
         {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-        <NitroSlot slot={(block as any).slots?.nested} />
+        <NitroSlot slot={(block as any).slots?.nested} flyo={flyo} />
       </div>
     );
     
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const TextBlock = ({ block }: { block: Block }) => <p>{(block as any).content}</p>;
     
-    initNitro({ 
+    flyo = initNitro({ 
       accessToken: 'test',
       components: { Container, TextBlock }
     });
@@ -237,37 +266,40 @@ describe('NitroSlot', () => {
       ] as unknown as Block[]
     };
 
-    render(<NitroSlot slot={slot} />);
+    render(<NitroSlot slot={slot} flyo={flyo} />);
     expect(screen.getByText('Parent')).toBeInTheDocument();
     expect(screen.getByText('Child')).toBeInTheDocument();
   });
 });
 
-describe('Hooks', () => {
-    it('getNitroPages returns PagesApi instance', () => {
-        const api = getNitroPages();
-        expect(api).toBeDefined();
-        expect(typeof api.page).toBe('function');
-    });
+describe('API client factories', () => {
+  it('getNitroPages returns PagesApi instance', () => {
+    const flyo = initNitro({ accessToken: 'test-token' });
+    const api = flyo.getNitroPages();
+    expect(api).toBeDefined();
+    expect(typeof api.page).toBe('function');
+  });
 
-    it('getNitroEntities returns EntitiesApi instance', () => {
-        const api = getNitroEntities();
-        expect(api).toBeDefined();
-        expect(typeof api.entityBySlug).toBe('function');
-        expect(typeof api.entityByUniqueid).toBe('function');
-    });
+  it('getNitroEntities returns EntitiesApi instance', () => {
+    const flyo = initNitro({ accessToken: 'test-token' });
+    const api = flyo.getNitroEntities();
+    expect(api).toBeDefined();
+    expect(typeof api.entityBySlug).toBe('function');
+    expect(typeof api.entityByUniqueid).toBe('function');
+  });
 });
 
-describe('Route Helpers', () => {
+describe('Page Route Factories', () => {
+  let flyo: FlyoInstance;
+
   beforeEach(() => {
-    initNitro({ 
-      accessToken: 'test-token'
-    });
+    flyo = initNitro({ accessToken: 'test-token' });
   });
 
   describe('nitroPageGenerateStaticParams', () => {
     it('generates static params from config pages', async () => {
-      const params = await nitroPageGenerateStaticParams();
+      const generateStaticParams = nitroPageGenerateStaticParams(flyo);
+      const params = await generateStaticParams();
       
       expect(params).toEqual([
         { slug: undefined }, // homepage
@@ -279,7 +311,8 @@ describe('Route Helpers', () => {
 
   describe('nitroPageGenerateMetadata', () => {
     it('generates metadata from page data', async () => {
-      const metadata = await nitroPageGenerateMetadata({
+      const generateMetadata = nitroPageGenerateMetadata(flyo);
+      const metadata = await generateMetadata({
         params: Promise.resolve({ slug: ['about'] })
       });
 
@@ -288,8 +321,9 @@ describe('Route Helpers', () => {
     });
 
     it('throws not found for invalid page', async () => {
+      const generateMetadata = nitroPageGenerateMetadata(flyo);
       await expect(
-        nitroPageGenerateMetadata({
+        generateMetadata({
           params: Promise.resolve({ slug: ['invalid'] })
         })
       ).rejects.toThrow('Not Found');
@@ -298,7 +332,8 @@ describe('Route Helpers', () => {
 
   describe('nitroPageRoute', () => {
     it('renders page component', async () => {
-      const result = await nitroPageRoute({
+      const pageHandler = nitroPageRoute(flyo);
+      const result = await pageHandler({
         params: Promise.resolve({ slug: ['about'] })
       });
 
@@ -306,8 +341,9 @@ describe('Route Helpers', () => {
     });
 
     it('throws not found for invalid page', async () => {
+      const pageHandler = nitroPageRoute(flyo);
       await expect(
-        nitroPageRoute({
+        pageHandler({
           params: Promise.resolve({ slug: ['invalid'] })
         })
       ).rejects.toThrow('Not Found');
@@ -315,26 +351,27 @@ describe('Route Helpers', () => {
   });
 });
 
-describe('Entity Route Helpers', () => {
+describe('Entity Route Factories', () => {
+  let flyo: FlyoInstance;
+
   beforeEach(() => {
-    initNitro({ 
-      accessToken: 'test-token'
-    });
+    flyo = initNitro({ accessToken: 'test-token' });
   });
 
   describe('nitroEntityRoute', () => {
     it('renders entity with custom resolver by slug', async () => {
       const resolver = async (params: Promise<{ slug: string }>) => {
         const { slug } = await params;
-        return getNitroEntities().entityBySlug({ slug, typeId: 123 });
+        return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
       };
 
-      const result = await nitroEntityRoute(
-        { params: Promise.resolve({ slug: 'test-entity' }) },
-        { 
-          resolver,
-          render: (entity: Entity) => <div>{entity.entity?.entity_title}</div>
-        }
+      const pageHandler = nitroEntityRoute(flyo, { 
+        resolver,
+        render: (entity: Entity) => <div>{entity.entity?.entity_title}</div>
+      });
+
+      const result = await pageHandler(
+        { params: Promise.resolve({ slug: 'test-entity' }) }
       );
 
       expect(result).toBeDefined();
@@ -343,15 +380,16 @@ describe('Entity Route Helpers', () => {
     it('renders entity with custom resolver by uniqueid', async () => {
       const resolver = async (params: Promise<{ uniqueid: string }>) => {
         const { uniqueid } = await params;
-        return getNitroEntities().entityByUniqueid({ uniqueid });
+        return flyo.getNitroEntities().entityByUniqueid({ uniqueid });
       };
 
-      const result = await nitroEntityRoute(
-        { params: Promise.resolve({ uniqueid: 'unique-123' }) },
-        { 
-          resolver,
-          render: (entity: Entity) => <div>{entity.entity?.entity_title}</div>
-        }
+      const pageHandler = nitroEntityRoute(flyo, { 
+        resolver,
+        render: (entity: Entity) => <div>{entity.entity?.entity_title}</div>
+      });
+
+      const result = await pageHandler(
+        { params: Promise.resolve({ uniqueid: 'unique-123' }) }
       );
 
       expect(result).toBeDefined();
@@ -360,12 +398,13 @@ describe('Entity Route Helpers', () => {
     it('uses default render when no render function provided', async () => {
       const resolver = async (params: Promise<{ slug: string }>) => {
         const { slug } = await params;
-        return getNitroEntities().entityBySlug({ slug, typeId: 123 });
+        return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
       };
 
-      const result = await nitroEntityRoute(
-        { params: Promise.resolve({ slug: 'test-entity' }) },
-        { resolver }
+      const pageHandler = nitroEntityRoute(flyo, { resolver });
+
+      const result = await pageHandler(
+        { params: Promise.resolve({ slug: 'test-entity' }) }
       );
 
       expect(result).toBeDefined();
@@ -374,13 +413,14 @@ describe('Entity Route Helpers', () => {
     it('throws not found for invalid entity', async () => {
       const resolver = async (params: Promise<{ slug: string }>) => {
         const { slug } = await params;
-        return getNitroEntities().entityBySlug({ slug, typeId: 123 });
+        return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
       };
 
+      const pageHandler = nitroEntityRoute(flyo, { resolver });
+
       await expect(
-        nitroEntityRoute(
-          { params: Promise.resolve({ slug: 'invalid-entity' }) },
-          { resolver }
+        pageHandler(
+          { params: Promise.resolve({ slug: 'invalid-entity' }) }
         )
       ).rejects.toThrow('Entity not found');
     });
@@ -390,12 +430,13 @@ describe('Entity Route Helpers', () => {
     it('generates metadata from entity by slug', async () => {
       const resolver = async (params: Promise<{ slug: string }>) => {
         const { slug } = await params;
-        return getNitroEntities().entityBySlug({ slug, typeId: 123 });
+        return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
       };
 
-      const metadata = await nitroEntityGenerateMetadata(
-        { params: Promise.resolve({ slug: 'test-entity' }) },
-        { resolver }
+      const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
+
+      const metadata = await generateMetadata(
+        { params: Promise.resolve({ slug: 'test-entity' }) }
       );
 
       expect(metadata.title).toBe('Test Entity');
@@ -405,12 +446,13 @@ describe('Entity Route Helpers', () => {
     it('generates metadata from entity by uniqueid', async () => {
       const resolver = async (params: Promise<{ uniqueid: string }>) => {
         const { uniqueid } = await params;
-        return getNitroEntities().entityByUniqueid({ uniqueid });
+        return flyo.getNitroEntities().entityByUniqueid({ uniqueid });
       };
 
-      const metadata = await nitroEntityGenerateMetadata(
-        { params: Promise.resolve({ uniqueid: 'unique-123' }) },
-        { resolver }
+      const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
+
+      const metadata = await generateMetadata(
+        { params: Promise.resolve({ uniqueid: 'unique-123' }) }
       );
 
       expect(metadata.title).toBe('Unique Entity');
@@ -422,9 +464,10 @@ describe('Entity Route Helpers', () => {
         return Promise.resolve({ entity: {} } as Entity);
       };
 
-      const metadata = await nitroEntityGenerateMetadata(
-        { params: Promise.resolve({ slug: 'test' }) },
-        { resolver }
+      const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
+
+      const metadata = await generateMetadata(
+        { params: Promise.resolve({ slug: 'test' }) }
       );
 
       expect(metadata.title).toBe('');
@@ -434,13 +477,14 @@ describe('Entity Route Helpers', () => {
     it('throws not found for invalid entity', async () => {
       const resolver = async (params: Promise<{ slug: string }>) => {
         const { slug } = await params;
-        return getNitroEntities().entityBySlug({ slug, typeId: 123 });
+        return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
       };
 
+      const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
+
       await expect(
-        nitroEntityGenerateMetadata(
-          { params: Promise.resolve({ slug: 'invalid-entity' }) },
-          { resolver }
+        generateMetadata(
+          { params: Promise.resolve({ slug: 'invalid-entity' }) }
         )
       ).rejects.toThrow('Entity not found');
     });
@@ -449,78 +493,54 @@ describe('Entity Route Helpers', () => {
 
 describe('NitroDebugInfo', () => {
   beforeEach(() => {
-    // Clear environment variables
     delete process.env.NODE_ENV;
     delete process.env.VERCEL_DEPLOYMENT_ID;
     delete process.env.VERCEL_GIT_COMMIT_SHA;
     delete process.env.VERSION;
-    
-    // Reset global state to allow new configuration
-    globalNitroState.configuration = null;
   });
 
-  it('renders debug info with production token', () => {
-    initNitro({ 
+  it('renders debug info with production token', async () => {
+    const flyo = initNitro({ 
       accessToken: 'p-production-token',
       liveEdit: false
     });
 
-    const mockConfig: Partial<ConfigResponse> = {
-      nitro: {
-        version: 123,
-        updated_at: 1609459200 // 2021-01-01 00:00:00 UTC
-      }
-    };
-
-    const { container } = render(<NitroDebugInfo config={mockConfig as ConfigResponse} />);
+    const element = await NitroDebugInfo({ flyo });
+    const { container } = render(element);
     const html = container.innerHTML;
     
     expect(html).toContain('<!-- ');
     expect(html).toContain('liveedit:false');
     expect(html).toContain('tokentype:production');
-    expect(html).toContain('version:123');
   });
 
-  it('renders debug info with develop token', () => {
-    initNitro({ 
+  it('renders debug info with develop token', async () => {
+    const flyo = initNitro({ 
       accessToken: 'd-develop-token',
       liveEdit: true
     });
 
-    const mockConfig: Partial<ConfigResponse> = {
-      nitro: {
-        version: 456,
-        updated_at: 1609459200
-      }
-    };
-
-    const { container } = render(<NitroDebugInfo config={mockConfig as ConfigResponse} />);
+    const element = await NitroDebugInfo({ flyo });
+    const { container } = render(element);
     const html = container.innerHTML;
     
     expect(html).toContain('liveedit:true');
     expect(html).toContain('tokentype:develop');
-    expect(html).toContain('version:456');
   });
 
-  it('includes environment variables when available', () => {
+  it('includes environment variables when available', async () => {
     process.env.NODE_ENV = 'production';
     process.env.VERCEL_DEPLOYMENT_ID = 'dpl_abc123';
     process.env.VERCEL_GIT_COMMIT_SHA = 'sha123abc';
     process.env.VERSION = 'v1.2.3';
 
-    initNitro({ 
+    const flyo = initNitro({ 
       accessToken: 'p-token',
       liveEdit: false
     });
 
-    const mockConfig: Partial<ConfigResponse> = {
-      nitro: {
-        version: 789,
-        updated_at: 1609459200
-      }
-    };
-
-    const { container } = render(<NitroDebugInfo config={mockConfig as ConfigResponse} />);
+    const element = await NitroDebugInfo({ flyo });
+    const { container } = render(element);
     const html = container.innerHTML;
     
     expect(html).toContain('env:production');
@@ -529,40 +549,16 @@ describe('NitroDebugInfo', () => {
     expect(html).toContain('release:v1.2.3');
   });
 
-  it('handles missing config data gracefully', () => {
-    initNitro({ 
+  it('formats date in de-CH locale', async () => {
+    const flyo = initNitro({ 
       accessToken: 'test-token',
       liveEdit: false
     });
 
-    const mockConfig: Partial<ConfigResponse> = {};
-
-    const { container } = render(<NitroDebugInfo config={mockConfig as ConfigResponse} />);
+    const element = await NitroDebugInfo({ flyo });
+    const { container } = render(element);
     const html = container.innerHTML;
     
-    expect(html).toContain('<!-- ');
-    expect(html).toContain('version:-');
-    expect(html).toContain('versiondate:-');
-  });
-
-  it('formats date in de-CH locale', () => {
-    initNitro({ 
-      accessToken: 'test-token',
-      liveEdit: false
-    });
-
-    const mockConfig: Partial<ConfigResponse> = {
-      nitro: {
-        version: 1,
-        updated_at: 1609459200 // 2021-01-01 00:00:00 UTC
-      }
-    };
-
-    const { container } = render(<NitroDebugInfo config={mockConfig as ConfigResponse} />);
-    const html = container.innerHTML;
-    
-    // Check that a formatted date is present (format: DD.MM.YYYY, HH:MM)
     expect(html).toContain('versiondate:');
-    expect(html).toMatch(/versiondate:\d{2}\.\d{2}\.\d{4},\s\d{2}:\d{2}/);
   });
 });

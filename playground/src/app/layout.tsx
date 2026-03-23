@@ -1,7 +1,7 @@
-import { Flyo } from "@/flyo.config";
+import { FlyoProvider, flyo } from "@/flyo.config";
 import type { ReactNode } from 'react';
 import { Header } from './header';
-import { getNitroConfig, NitroDebugInfo } from "@flyo/nitro-next/server";
+import { NitroDebugInfo } from "@flyo/nitro-next/server";
 
 export default async function RootLayout({
   children,
@@ -9,13 +9,13 @@ export default async function RootLayout({
   children: ReactNode;
 }) {
 
-  const config = await getNitroConfig();
+  const config = await flyo.getNitroConfig();
 
   return (
-    <Flyo>
+    <FlyoProvider>
       <html lang="en">
         <body>
-          <NitroDebugInfo config={config} />
+          <NitroDebugInfo flyo={flyo} />
           <Header config={config} />
           <div className="min-h-screen">
             <main className="container mx-auto p-4">
@@ -24,6 +24,6 @@ export default async function RootLayout({
           </div>
         </body>
       </html>
-    </Flyo>
+    </FlyoProvider>
   );
 }
