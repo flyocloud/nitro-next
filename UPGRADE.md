@@ -38,6 +38,13 @@ export function FlyoProvider({ children }) {
 }
 ```
 
+If your editor enables `react-refresh/only-export-components`, split these into two files:
+
+- keep `flyo.config.ts` for `flyo`, `liveEdit`, and other non-component exports
+- move `FlyoProvider` into its own `.tsx` file
+
+That avoids the Fast Refresh warning while keeping the v2 instance-based architecture unchanged.
+
 ### 2. Layout (`layout.tsx`)
 
 **Before (v1):**
