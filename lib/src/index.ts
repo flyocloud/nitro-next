@@ -1,28 +1,22 @@
 // Server exports only - use @flyo/nitro-next/client for client components
 export {
+  // Components
   NitroBlock,
   NitroPage,
   NitroSlot,
   NitroDebugInfo,
   NitroEntityJsonLd,
+  // Initialization
   initNitro,
-  getNitro,
-  getNitroConfig,
-  getNitroPages,
-  getNitroEntities,
-  getNitroSitemap,
-  getNitroSearch,
-  // Route helpers for Next.js app router - Pages
-  nitroPageResolveRoute,
+  // Factory functions for Next.js app router - Pages
   nitroPageRoute,
   nitroPageGenerateMetadata,
   nitroPageGenerateStaticParams,
-  // Route helpers for Next.js app router - Entities
+  // Factory functions for Next.js app router - Entities
   nitroEntityRoute,
   nitroEntityGenerateMetadata,
-  // Sitemap helper for Next.js
-  nitroSitemap,
   // Types
+  type FlyoInstance,
   type EntityResolver,
   type NitroState,
 } from './server';

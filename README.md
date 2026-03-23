@@ -18,7 +18,7 @@ npm install @flyo/nitro-next
 
 ### 2. Configuration
 
-Create a `flyo.config.tsx` file to configure the library and your components.
+Create a `flyo.config.tsx` file. The `initNitro()` function returns a **Flyo instance** — an object that contains all the API methods and state for your app.
 
 ```tsx
 import type { ReactNode } from 'react';
@@ -27,47 +27,42 @@ import { FlyoClientWrapper } from '@flyo/nitro-next/client';
 import { HeroBanner } from './components/HeroBanner';
 import { Text } from './components/Text';
 
-// Get configuration from environment variables
 const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
 const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
 const baseUrl = process.env.SITE_URL || 'http://localhost:3000';
 
-export const flyoConfig = initNitro({
-  // API token for authenticating with the Flyo CMS
-  accessToken: accessToken,
-  // Language code for content retrieval
+// Create the Flyo instance — import this wherever you need CMS access
+export const flyo = initNitro({
+  accessToken,
   lang: 'en',
-  // Base URL for your site (used for sitemap generation, canonical URLs, etc.)
-  baseUrl: baseUrl,
-  // Enable live editing mode - when true, wraps your app with FlyoClientWrapper for real-time content updates
-  liveEdit: liveEdit,
-  // Server/CDN cache TTL in seconds (default: 1200 = 20 minutes)
+  baseUrl,
+  liveEdit,
   serverCacheTtl: 1200,
-  // Client browser cache TTL in seconds (default: 900 = 15 minutes)
   clientCacheTtl: 900,
-  // Map of CMS block types to React components - register all custom components here
   components: {
-    HeroBanner: HeroBanner,
-    Text: Text
+    HeroBanner,
+    Text
   }
 });
 
-/**
- * Pre-configured Flyo component
- * 
- * This component initializes the Flyo Nitro CMS with your configuration.
- * Wrap your app with this component in your root layout.
- */
-export function Flyo({ children }: { children: ReactNode }) {
-  flyoConfig();
-
+// Optional but recommended wrapper for live editing support
+export function FlyoProvider({ children }: { children: ReactNode }) {
   if (liveEdit) {
     return <FlyoClientWrapper>{children}</FlyoClientWrapper>;
   }
-
-  return children;
+  return <>{children}</>;
 }
 ```
+
+The `flyo` instance provides:
+- `flyo.getNitroConfig()` — Fetch the CMS configuration
+- `flyo.getNitroPages()` — Get the Pages API client
+- `flyo.getNitroEntities()` — Get the Entities API client
+- `flyo.getNitroSitemap()` — Get the Sitemap API client
+- `flyo.getNitroSearch()` — Get the Search API client
+- `flyo.pageResolveRoute(props)` — Resolve a page from route params
+- `flyo.sitemap()` — Generate the sitemap
+- `flyo.state` — Access the configuration state
 
 ### 3. Setup Proxy
 
@@ -75,9 +70,9 @@ Create a `proxy.ts` file in the `src/` directory to handle cache control:
 
 ```tsx
 import { createProxy } from '@flyo/nitro-next/proxy';
-import { flyoConfig } from './flyo.config';
+import { flyo } from './flyo.config';
 
-export default createProxy(flyoConfig());
+export default createProxy(flyo);
 
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
@@ -97,19 +92,19 @@ The proxy middleware:
 
 ### 4. Setup Layout
 
-Wrap your application with the provider in `app/layout.tsx`.
+Use the Flyo instance in your `app/layout.tsx`:
 
 ```tsx
 import Link from 'next/link';
-import { Flyo } from '@/flyo.config';
-import { getNitroConfig, NitroDebugInfo } from '@flyo/nitro-next/server';
+import { FlyoProvider, flyo } from '@/flyo.config';
+import { NitroDebugInfo } from '@flyo/nitro-next/server';
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const config = await getNitroConfig();
+  const config = await flyo.getNitroConfig();
   const navItems = config?.containers?.nav?.items ?? [];
   
   return (
-    <Flyo>
+    <FlyoProvider>
       <html>
         <body>
           <header>
@@ -129,17 +124,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </nav>
           </header>
 
-          <NitroDebugInfo config={config} />
+          <NitroDebugInfo flyo={flyo} />
           {children}
         </body>
       </html>
-    </Flyo>
+    </FlyoProvider>
   );
 }
 ```
-
-In this example, the navigation is read from `config.containers.nav` and rendered in the layout header.
-Make sure your Flyo container key is `nav` (or adjust the key accordingly).
 
 The `NitroDebugInfo` component outputs debug information as an HTML comment, including:
 - Live edit status
@@ -149,48 +141,40 @@ The `NitroDebugInfo` component outputs debug information as an HTML comment, inc
 - Deployment ID and commit SHA (Vercel)
 - Release version (if set)
 
-This is useful for debugging and verifying your deployment configuration.
-
 ### 5. Create Page
 
-Create a catch-all route in `app/[[...slug]]/page.tsx` to handle dynamic pages.
+Create a catch-all route in `app/[[...slug]]/page.tsx`. The factory functions take the `flyo` instance and return Next.js-compatible handlers:
 
 ```tsx
-// Re-export the Nitro route handlers for a one-liner setup
-export {
-  nitroPageRoute as default,
-  nitroPageGenerateMetadata as generateMetadata,
-  // NOTE: generateStaticParams is commented out by default!
-  // 
-  // ⚠️ IMPORTANT: Only enable this in PRODUCTION builds!
-  // 
-  // When enabled, Next.js will pre-render ALL pages at build time, which:
-  // - Disables dynamic caching completely
-  // - Prevents live preview updates in the Nitro CMS editor
-  // - Makes the preview frame unusable (you won't see changes anymore)
-  // 
-  // To enable in production only, use a conditional export:
-  // ...(process.env.FLYO_LIVE_EDIT !== 'true' && {
-  //   generateStaticParams: nitroPageGenerateStaticParams
-  // })
-  //
-  // nitroPageGenerateStaticParams as generateStaticParams,
-} from "@flyo/nitro-next/server";
+import { nitroPageRoute, nitroPageGenerateMetadata, nitroPageGenerateStaticParams } from "@flyo/nitro-next/server";
+import { flyo } from "@/flyo.config";
+
+export default nitroPageRoute(flyo);
+export const generateMetadata = nitroPageGenerateMetadata(flyo);
+
+// NOTE: generateStaticParams is commented out by default!
+// 
+// ⚠️ IMPORTANT: Only enable this in PRODUCTION builds!
+// When enabled, Next.js will pre-render ALL pages at build time, which:
+// - Disables dynamic caching completely
+// - Prevents live preview updates in the Nitro CMS editor
+//
+// export const generateStaticParams = nitroPageGenerateStaticParams(flyo);
 ```
 
 #### Custom Page Rendering
 
-If you need to access the page data for custom logic (e.g. reading page properties, adding conditional wrappers, passing data to other components), use `nitroPageResolveRoute` instead of the one-liner re-export:
+If you need to access the page data for custom logic (e.g. reading page properties, adding conditional wrappers, passing data to other components), use `flyo.pageResolveRoute()`:
 
 ```tsx
 // app/[[...slug]]/page.tsx
-import { nitroPageResolveRoute, NitroPage, nitroPageGenerateMetadata } from '@flyo/nitro-next/server';
+import { NitroPage, nitroPageGenerateMetadata } from '@flyo/nitro-next/server';
+import { flyo } from '@/flyo.config';
 
-// Metadata still works with the standard helper
-export const generateMetadata = nitroPageGenerateMetadata;
+export const generateMetadata = nitroPageGenerateMetadata(flyo);
 
 export default async function Page(props: { params: Promise<{ slug?: string[] }> }) {
-  const { page, path, cfg } = await nitroPageResolveRoute(props);
+  const { page, path, cfg } = await flyo.pageResolveRoute(props);
 
   // Access page data before rendering
   // page - the full Page object (page.title, page.meta_json, page.json, etc.)
@@ -201,51 +185,13 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
     <div>
       <h1>{page.title}</h1>
       {/* Render all blocks from the page */}
-      <NitroPage page={page} />
+      <NitroPage page={page} flyo={flyo} />
     </div>
   );
 }
 ```
 
-The `nitroPageResolveRoute` function is React-cached — calling it in both `generateMetadata` and your page component will only trigger a single API request.
-
-#### Caveat: Parallel Routes Must Initialize Config Per Route
-
-If you use parallel routes (for example `@title`) and call Nitro helpers like `nitroPageResolveRoute`, import your `flyo.config` in **every** route file.
-
-Next.js does not guarantee module execution order between parallel routes. Without importing the config in each route module, one route can resolve before Nitro is initialized and the configuration token can be empty.
-
-Example `page.tsx` (trimmed):
-
-```tsx
-import '../../../flyo.config';
-import {
-  NitroPage,
-  nitroPageGenerateMetadata,
-  nitroPageResolveRoute,
-} from '@flyo/nitro-next/server';
-
-export const generateMetadata = nitroPageGenerateMetadata;
-
-export default async function Page(props: { params: Promise<{ slug?: string[] }> }) {
-  const { page } = await nitroPageResolveRoute(props);
-  return <NitroPage page={page} />;
-}
-```
-
-Example parallel route `@title` (trimmed):
-
-```tsx
-import '../../../flyo.config';
-import { nitroPageResolveRoute } from '@flyo/nitro-next/server';
-
-export default async function TitlePage(props: { params: Promise<{ slug?: string[] }> }) {
-  const { page } = await nitroPageResolveRoute(props);
-  return <>{page.title}</>;
-}
-```
-
-If you enable `generateStaticParams`, only do this for production builds. Enabling it in preview/live edit setups will pre-render all pages and disable live preview behavior.
+The `flyo.pageResolveRoute()` function is React-cached — calling it in both `generateMetadata` and your page component will only trigger a single API request.
 
 ### 6. Create Custom Components
 
@@ -399,10 +345,11 @@ The loader automatically:
 
 ### 9. Nested Blocks (Slots)
 
-When blocks contain nested blocks in slots, use the `NitroSlot` component to recursively render them. This is useful for container-like components that can hold other blocks.
+When blocks contain nested blocks in slots, use the `NitroSlot` component to recursively render them. In v2, `NitroSlot` requires the `flyo` prop — import it from your config file:
 
 ```tsx
 import { NitroSlot } from '@flyo/nitro-next/server';
+import { flyo } from '@/flyo.config';
 import { Block } from '@flyo/nitro-typescript';
 
 export function Container({ block }: { block: Block }) {
@@ -410,7 +357,7 @@ export function Container({ block }: { block: Block }) {
     <div className="container">
       <h2>{block.content?.title}</h2>
       {/* Render nested blocks from the slot */}
-      <NitroSlot slot={block.slots?.content} />
+      <NitroSlot slot={block.slots?.content} flyo={flyo} />
     </div>
   );
 }
@@ -434,6 +381,7 @@ This works because Next.js supports passing server-rendered React trees into cli
 import { Block } from '@flyo/nitro-typescript';
 import { NitroSlot } from '@flyo/nitro-next/server';
 import { EditableSection } from '@flyo/nitro-next/client';
+import { flyo } from '@/flyo.config';
 
 export function HeroBanner({ block }: { block: Block }) {
   return (
@@ -444,7 +392,7 @@ export function HeroBanner({ block }: { block: Block }) {
       <p className="text-lg mb-6">
         {block?.content?.teaser}
       </p>
-      <NitroSlot slot={block.slots?.content} />
+      <NitroSlot slot={block.slots?.content} flyo={flyo} />
     </EditableSection>
   );
 }
@@ -472,47 +420,38 @@ Create `app/blog/[slug]/page.tsx`:
 import { 
   nitroEntityRoute, 
   nitroEntityGenerateMetadata, 
-  getNitroEntities,
   NitroEntityJsonLd,
   type EntityResolver
 } from "@flyo/nitro-next/server";
+import { flyo } from "@/flyo.config";
 import { FlyoMetric } from "@flyo/nitro-next/client";
 import type { Entity } from "@flyo/nitro-typescript";
-
-type RouteParams = {
-  params: Promise<{ slug: string }>;
-};
 
 // Define how to resolve the entity from route params
 const resolver: EntityResolver<{ slug: string }> = async (params) => {
   const { slug } = await params;
-  return getNitroEntities().entityBySlug({ 
+  return flyo.getNitroEntities().entityBySlug({ 
     slug, 
     typeId: 123 // Your entity type ID from Flyo
   });
 };
 
-// Generate metadata for SEO
-export const generateMetadata = (props: RouteParams) => 
-  nitroEntityGenerateMetadata(props, { resolver });
+// Factory functions return Next.js-compatible handlers
+export const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
 
-// Render the page
-export default function BlogPost(props: RouteParams) {
-  return nitroEntityRoute(props, {
-    resolver,
-    render: (entity: Entity) => (
-      <>
-        <NitroEntityJsonLd entity={entity} />
-        <FlyoMetric entity={entity} />
-        <article>
-          <h1>{entity.entity?.entity_title}</h1>
-          <p>{entity.entity?.entity_teaser}</p>
-          {/* Access all entity data here */}
-        </article>
-      </>
-    )
-  });
-}
+export default nitroEntityRoute(flyo, {
+  resolver,
+  render: (entity: Entity) => (
+    <>
+      <NitroEntityJsonLd entity={entity} />
+      <FlyoMetric entity={entity} />
+      <article>
+        <h1>{entity.entity?.entity_title}</h1>
+        <p>{entity.entity?.entity_teaser}</p>
+      </article>
+    </>
+  )
+});
 ```
 
 #### Example 2: Entity by Unique ID
@@ -523,39 +462,32 @@ Create `app/items/[uniqueid]/page.tsx`:
 import { 
   nitroEntityRoute, 
   nitroEntityGenerateMetadata, 
-  getNitroEntities,
   NitroEntityJsonLd,
-  type Entity,
   type EntityResolver
 } from "@flyo/nitro-next/server";
+import { flyo } from "@/flyo.config";
 import { FlyoMetric } from "@flyo/nitro-next/client";
-
-type RouteParams = {
-  params: Promise<{ uniqueid: string }>;
-};
+import type { Entity } from "@flyo/nitro-typescript";
 
 const resolver: EntityResolver<{ uniqueid: string }> = async (params) => {
   const { uniqueid } = await params;
-  return getNitroEntities().entityByUniqueid({ uniqueid });
+  return flyo.getNitroEntities().entityByUniqueid({ uniqueid });
 };
 
-export const generateMetadata = (props: RouteParams) => 
-  nitroEntityGenerateMetadata(props, { resolver });
+export const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
 
-export default function Item(props: RouteParams) {
-  return nitroEntityRoute(props, {
-    resolver,
-    render: (entity: Entity) => (
-      <>
-        <NitroEntityJsonLd entity={entity} />
-        <FlyoMetric entity={entity} />
-        <div>
-          <h1>{entity.entity?.entity_title}</h1>
-        </div>
-      </>
-    )
-  });
-}
+export default nitroEntityRoute(flyo, {
+  resolver,
+  render: (entity: Entity) => (
+    <>
+      <NitroEntityJsonLd entity={entity} />
+      <FlyoMetric entity={entity} />
+      <div>
+        <h1>{entity.entity?.entity_title}</h1>
+      </div>
+    </>
+  )
+});
 ```
 
 #### Example 3: Custom Route Parameter Name
@@ -566,44 +498,36 @@ Works with any route parameter name - create `app/products/[id]/page.tsx`:
 import { 
   nitroEntityRoute, 
   nitroEntityGenerateMetadata, 
-  getNitroEntities,
   NitroEntityJsonLd,
-  type Entity,
   type EntityResolver
 } from "@flyo/nitro-next/server";
+import { flyo } from "@/flyo.config";
 import { FlyoMetric } from "@flyo/nitro-next/client";
-
-type RouteParams = {
-  params: Promise<{ id: string }>;
-};
+import type { Entity } from "@flyo/nitro-typescript";
 
 const resolver: EntityResolver<{ id: string }> = async (params) => {
   const { id } = await params;
-  // Use the id parameter however you need
-  return getNitroEntities().entityBySlug({ 
+  return flyo.getNitroEntities().entityBySlug({ 
     slug: id,
     typeId: 456
   });
 };
 
-export const generateMetadata = (props: RouteParams) => 
-  nitroEntityGenerateMetadata(props, { resolver });
+export const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
 
-export default function Product(props: RouteParams) {
-  return nitroEntityRoute(props, {
-    resolver,
-    render: (entity: Entity) => (
-      <>
-        <NitroEntityJsonLd entity={entity} />
-        <FlyoMetric entity={entity} />
-        <div>
-          <h1>{entity.entity?.entity_title}</h1>
-          <p>{entity.entity?.entity_teaser}</p>
-        </div>
-      </>
-    )
-  });
-}
+export default nitroEntityRoute(flyo, {
+  resolver,
+  render: (entity: Entity) => (
+    <>
+      <NitroEntityJsonLd entity={entity} />
+      <FlyoMetric entity={entity} />
+      <div>
+        <h1>{entity.entity?.entity_title}</h1>
+        <p>{entity.entity?.entity_teaser}</p>
+      </div>
+    </>
+  )
+});
 ```
 
 #### How it Works
@@ -618,21 +542,17 @@ This pattern works with any route structure: `[slug]`, `[id]`, `[uniqueid]`, `[w
 
 ### 11. Sitemap Generation
 
-Nitro provides a helper function to automatically generate a Next.js sitemap from your Flyo CMS content. The sitemap includes all pages and mapped entities.
+Nitro provides automatic sitemap generation using the Flyo instance:
 
 #### Setup
 
-First, ensure your `flyo.config.tsx` includes the `baseUrl` parameter:
+Ensure your config includes the `baseUrl`:
 
 ```tsx
-export const flyoConfig = initNitro({
+export const flyo = initNitro({
   accessToken: process.env.FLYO_ACCESS_TOKEN || '',
-  lang: 'en',
-  baseUrl: process.env.SITE_URL || 'http://localhost:3000', // Required for sitemap
-  liveEdit: process.env.FLYO_LIVE_EDIT === 'true',
-  components: {
-    // your components
-  }
+  baseUrl: process.env.SITE_URL || 'http://localhost:3000',
+  // ...
 });
 ```
 
@@ -641,17 +561,16 @@ export const flyoConfig = initNitro({
 Create `app/sitemap.ts`:
 
 ```ts
-import { nitroSitemap } from '@flyo/nitro-next/server';
-import { flyoConfig } from '../flyo.config';
+import { flyo } from '@/flyo.config';
 
 export default async function sitemap() {
-  return nitroSitemap(flyoConfig());
+  return flyo.sitemap();
 }
 ```
 
 #### How it Works
 
-1. **Fetches all content**: The `nitroSitemap` function fetches all pages and entities from the Flyo Nitro sitemap endpoint
+1. **Fetches all content**: The `flyo.sitemap()` method fetches all pages and entities from the Flyo Nitro sitemap endpoint
 2. **Uses configured baseUrl**: It constructs full URLs using the `baseUrl` from your Nitro configuration
 3. **Handles routes**: Prioritizes the `routes` object from entities, falls back to `entity_slug`
 4. **Returns Next.js format**: Outputs the standard `MetadataRoute.Sitemap` format that Next.js expects
@@ -702,74 +621,80 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
 
 ### Server Exports
 
-- **`initNitro(config)`** – Create and cache the Flyo configuration the rest of the helpers rely on.
+- **`initNitro(config)`** – Create a Flyo instance with all API methods and state. Returns a `FlyoInstance`.
   ```ts
   import { initNitro } from '@flyo/nitro-next/server';
+  const flyo = initNitro({ accessToken: '...' });
   ```
-- **`getNitroConfig()`** – Fetches and caches the Nitro configuration/metadata that describes the available pages.
-  ```ts
-  import { getNitroConfig } from '@flyo/nitro-next/server';
-  ```
-- **`getNitroPages()`** – Factory for the pages API that lets you fetch Nitro page data (used by `NitroPage`).
-  ```ts
-  import { getNitroPages } from '@flyo/nitro-next/server';
-  ```
-- **`getNitroEntities()`** – Factory for Nitro entities API (available via the Flyo Typescript SDK).
-  ```ts
-  import { getNitroEntities } from '@flyo/nitro-next/server';
-  ```
-- **`nitroPageRoute(props)`** – Default page route handler for Nitro pages. Renders a page from Flyo CMS.
+- **`nitroPageRoute(flyo)`** – Factory that returns a page route handler for Nitro pages.
   ```tsx
   import { nitroPageRoute } from '@flyo/nitro-next/server';
+  export default nitroPageRoute(flyo);
   ```
-- **`nitroPageGenerateMetadata(props)`** – Generate metadata for Nitro pages using page data from Flyo.
+- **`nitroPageGenerateMetadata(flyo)`** – Factory that returns a metadata generator for Nitro pages.
   ```tsx
   import { nitroPageGenerateMetadata } from '@flyo/nitro-next/server';
+  export const generateMetadata = nitroPageGenerateMetadata(flyo);
   ```
-- **`nitroPageGenerateStaticParams()`** – Generate static params for all Nitro pages to enable SSG.
+- **`nitroPageGenerateStaticParams(flyo)`** – Factory that returns a static params generator for SSG.
   ```tsx
   import { nitroPageGenerateStaticParams } from '@flyo/nitro-next/server';
+  export const generateStaticParams = nitroPageGenerateStaticParams(flyo);
   ```
-- **`nitroEntityRoute(props, options)`** – Flexible entity detail page handler that works with any route param structure. Takes a custom resolver function.
+- **`nitroEntityRoute(flyo, options)`** – Factory that returns an entity detail page handler. Takes a resolver function and optional render function.
   ```tsx
   import { nitroEntityRoute } from '@flyo/nitro-next/server';
+  export default nitroEntityRoute(flyo, { resolver, render });
   ```
-- **`nitroEntityGenerateMetadata(props, options)`** – Generate metadata for entity detail pages using a custom resolver function.
+- **`nitroEntityGenerateMetadata(flyo, options)`** – Factory that returns a metadata generator for entity detail pages.
   ```tsx
   import { nitroEntityGenerateMetadata } from '@flyo/nitro-next/server';
+  export const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
   ```
-- **`nitroSitemap(state)`** – Generate a Next.js sitemap from Flyo Nitro content. Takes the Nitro state (from `flyoConfig()`) as parameter.
-  ```tsx
-  import { nitroSitemap } from '@flyo/nitro-next/server';
-  ```
-- **`getNitro()`** – Access the current Nitro configuration state after initialization.
-  ```tsx
-  import { getNitro } from '@flyo/nitro-next/server';
-  ```
-- **`createProxy(state)`** – Create a Next.js middleware for cache control. Takes the Nitro state (from `flyoConfig()`) as parameter.
+- **`createProxy(flyo)`** – Create a Next.js middleware for cache control.
   ```tsx
   import { createProxy } from '@flyo/nitro-next/proxy';
+  export default createProxy(flyo);
   ```
-- **`NitroPage`** – Server component that renders a whole Nitro page by delegating to `NitroBlock` for each block.
+- **`NitroPage`** – Server component that renders a whole Nitro page by delegating to `NitroBlock` for each block. Requires `flyo` prop.
   ```tsx
   import { NitroPage } from '@flyo/nitro-next/server';
+  <NitroPage page={page} flyo={flyo} />
   ```
-- **`NitroBlock`** – Low-level renderer that looks up and renders the registered component for a block, or shows a placeholder if missing.
+- **`NitroBlock`** – Low-level renderer that looks up and renders the registered component for a block. Requires `flyo` prop.
   ```tsx
   import { NitroBlock } from '@flyo/nitro-next/server';
+  <NitroBlock block={block} flyo={flyo} />
   ```
-- **`NitroSlot`** – Renders nested blocks from a slot. Used for recursive block rendering when blocks contain slots with child blocks.
+- **`NitroSlot`** – Renders nested blocks from a slot. Used for recursive block rendering. Requires `flyo` prop.
   ```tsx
   import { NitroSlot } from '@flyo/nitro-next/server';
+  <NitroSlot slot={block.slots?.content} flyo={flyo} />
   ```
-- **`NitroEntityJsonLd`** – Server component that renders a JSON-LD `<script>` tag from an Entity's `jsonld` field for structured data / SEO. Safely escapes HTML to prevent XSS. Returns `null` if no jsonld data exists.
+- **`NitroEntityJsonLd`** – Server component that renders a JSON-LD `<script>` tag from an Entity's `jsonld` field for structured data / SEO. Safely escapes HTML to prevent XSS.
   ```tsx
   import { NitroEntityJsonLd } from '@flyo/nitro-next/server';
   ```
-- **`NitroDebugInfo`** – Server component that outputs debug information about the Nitro setup as an HTML comment. Includes environment, API version, token type, and deployment details.
+- **`NitroDebugInfo`** – Async server component that outputs debug information as an HTML comment. Requires `flyo` prop.
   ```tsx
   import { NitroDebugInfo } from '@flyo/nitro-next/server';
+  <NitroDebugInfo flyo={flyo} />
   ```
+
+### FlyoInstance Methods
+
+After calling `initNitro()`, the returned instance exposes:
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `flyo.getNitroConfig()` | `Promise<ConfigResponse>` | Fetch the CMS config (React-cached) |
+| `flyo.getNitroPages()` | `PagesApi` | Get the Pages API client |
+| `flyo.getNitroEntities()` | `EntitiesApi` | Get the Entities API client |
+| `flyo.getNitroSitemap()` | `SitemapApi` | Get the Sitemap API client |
+| `flyo.getNitroSearch()` | `SearchApi` | Get the Search API client |
+| `flyo.pageResolveRoute(props)` | `Promise<{ page, path, cfg }>` | Resolve a page from route params (React-cached) |
+| `flyo.sitemap()` | `Promise<MetadataRoute.Sitemap>` | Generate the Next.js sitemap |
+| `flyo.state` | `NitroState` | Access the configuration state |
 
 ## Development
 

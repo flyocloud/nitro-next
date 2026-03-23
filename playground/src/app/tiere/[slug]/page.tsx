@@ -1,31 +1,25 @@
 import { 
     nitroEntityRoute, 
     nitroEntityGenerateMetadata, 
-    getNitroEntities,
     NitroEntityJsonLd,
     type EntityResolver
 } from "@flyo/nitro-next/server";
+import { flyo } from "@/flyo.config";
 import { FlyoMetric } from "@flyo/nitro-next/client";
 import type { Entity } from "@flyo/nitro-typescript";
-
-type RouteParams = {
-    params: Promise<{ slug: string }>;
-};
 
 // Define the resolver - how to get the entity from route params
 const resolver: EntityResolver<{ slug: string }> = async (params) => {
     const { slug } = await params;
-    return getNitroEntities().entityBySlug({ 
+    return flyo.getNitroEntities().entityBySlug({ 
         slug, 
         typeId: 172 
     });
 };
 
-export const generateMetadata = (props: RouteParams) => 
-    nitroEntityGenerateMetadata(props, { resolver });
+export const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
 
-export default function Page(props: RouteParams) {
-  return nitroEntityRoute(props, {
+export default nitroEntityRoute(flyo, {
     resolver,
     render: (entity: Entity) => {
       return (
@@ -38,5 +32,4 @@ export default function Page(props: RouteParams) {
         </div>
       );
     },
-  });
-}
+});
