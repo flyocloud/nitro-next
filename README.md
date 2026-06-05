@@ -193,7 +193,55 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
 
 The `flyo.pageResolveRoute()` function is React-cached — calling it in both `generateMetadata` and your page component will only trigger a single API request.
 
-### 6. Create Custom Components
+### 6. Generate Block Types
+
+Flyo can generate fully typed TypeScript definitions for **every block, entity and container** in your Nitro project straight from the OpenAPI schema. This gives you autocomplete and type-safety when building components.
+
+Add a `flyo:types` script to your `package.json`:
+
+```json
+{
+  "scripts": {
+    "flyo:types": "npx -y openapi-typescript@latest 'https://api.flyo.cloud/nitro/v1/openapi/schemas?token=<YOUR_TOKEN>' -o ./src/generated/flyo.ts --root-types --root-types-no-schema-prefix --export-type"
+  }
+}
+```
+
+Replace `<YOUR_TOKEN>` with your Flyo develop token. Then run:
+
+```bash
+npm run flyo:types
+```
+
+This writes `./src/generated/flyo.ts` containing a type for each of your blocks (for example `BlockHero`, `BlockText`, …), as well as your entities and containers.
+
+What the flags do:
+- `--root-types` / `--root-types-no-schema-prefix` — export each schema as a top-level type alias (e.g. `BlockHero`) instead of nesting it under `components['schemas']`.
+- `--export-type` — emit `export type` aliases so you can import them directly.
+
+> **Tip:** Re-run `npm run flyo:types` whenever you add or change block fields in the Nitro CMS so your types stay in sync. You can either commit the generated file or add it to `.gitignore` and regenerate it in CI.
+
+Now you can type a component's `block` prop with the exact generated type instead of the generic `Block`:
+
+```tsx
+'use client';
+
+import { editable } from "@flyo/nitro-next/client";
+import type { BlockHero } from "@/src/generated/flyo";
+
+export function FlyoHero({ block }: { block: BlockHero }) {
+  return (
+    <section {...editable(block)} className="bg-gray-200 p-8 rounded-lg text-center">
+      <h2 className="text-3xl font-bold mb-4">{block?.content?.title}</h2>
+      <p className="text-lg mb-6">{block?.content?.teaser}</p>
+    </section>
+  );
+}
+```
+
+Using the generated `BlockHero` type gives you autocomplete on `block.content.*` and catches typos at build time. The next section uses the generic `Block` type for simplicity, but you can swap in a generated type anywhere a block is rendered.
+
+### 7. Create Custom Components
 
 Create custom components for your Flyo blocks. Each component receives a `block` object containing the content from your CMS.
 
@@ -226,7 +274,7 @@ The `editable()` helper function marks the component as editable in the Flyo CMS
 
 > **Important:** `editable()` is a **client-only** function. Any component that uses `editable()` **must** have `'use client'` as the very first line of the file. Using it in a server component will cause a runtime error.
 
-### 7. WYSIWYG Component
+### 8. WYSIWYG Component
 
 The `FlyoWysiwyg` component renders ProseMirror/TipTap JSON content. It handles standard nodes automatically and allows you to provide custom components for specific node types.
 
@@ -315,7 +363,7 @@ This keeps custom WYSIWYG node registration centralized and consistent across yo
 You can still override styles per usage, for example:
 `<AppWysiwyg json={block.content.json} className="wysiwyg article-body" />`.
 
-### 8. Image Optimization with Flyo CDN
+### 9. Image Optimization with Flyo CDN
 
 The `FlyoCdnLoader` function provides automatic image optimization through Flyo's CDN. Use it with Next.js Image component for optimized image delivery with automatic format conversion and resizing.
 
@@ -343,7 +391,7 @@ The loader automatically:
 - Applies width-based transformations
 - Converts images to WebP format for optimal performance
 
-### 9. Nested Blocks (Slots)
+### 10. Nested Blocks (Slots)
 
 When blocks contain nested blocks in slots, use the `NitroSlot` component to recursively render them. In v2, `NitroSlot` requires the `flyo` prop — import it from your config file:
 
@@ -408,7 +456,7 @@ export function HeroBanner({ block }: { block: Block }) {
 
 > **Why this works:** Only the minimal wrapper becomes a client component. The heavy recursive slot rendering stays on the server. Props passed into a client component must be serializable — plain CMS JSON objects like `block` are fine.
 
-### 10. Entity Detail Pages
+### 11. Entity Detail Pages
 
 Nitro provides flexible helpers for creating entity detail pages with any route structure. You define a **resolver function** that fetches the entity from your route params, and the library handles caching and rendering.
 
@@ -540,7 +588,7 @@ export default nitroEntityRoute(flyo, {
 
 This pattern works with any route structure: `[slug]`, `[id]`, `[uniqueid]`, `[whatever]` - you control the resolution logic!
 
-### 11. Sitemap Generation
+### 12. Sitemap Generation
 
 Nitro provides automatic sitemap generation using the Flyo instance:
 
@@ -707,4 +755,18 @@ npm install
 # run dev & start the playground
 npm run dev
 npm run playground
+```
+
+## Example `CLAUDE.md`
+
+If you build your project with an AI coding assistant (such as Claude Code), drop a `CLAUDE.md` file in your project root so the assistant understands your stack and knows where to find the Flyo/Nitro documentation. Here is a minimal starting point you can copy and adapt:
+
+```markdown
+# Flyo
+
+This is the new XYZ website of XYZ.
+
+It uses the Headless CMS, Flyo Nitro, to manage the content of the website. The full documentation for Nitro CMS can be found here: https://docs.flyo.cloud/doc/integrations-nitro-cms
+
+The Flyo Nitro CMS Next.js plugin/extension documentation can be found here: https://github.com/flyocloud/nitro-next regarding blocks, entities, and more.
 ```
