@@ -27,9 +27,22 @@ export interface WysiwygNode {
 export type WysiwygJson = WysiwygNode | WysiwygNode[] | { type: 'doc'; content: WysiwygNode[] };
 
 /**
+ * The minimal block shape `editable()` needs to wire live-editing.
+ *
+ * `editable()` reads only `uid`, so it deliberately accepts more than the full
+ * {@link Block}. The per-block types generated from a project's OpenAPI schema
+ * (e.g. `BlockHero`) are NOT structurally assignable to `Block`: their
+ * `content`/`config`/`slots` carry an `_empty` marker that clashes with
+ * `Block`'s index signatures (`{ [key: string]: BlockSlotValue }`). Typing
+ * against the read-surface keeps both the generic `Block` and those generated
+ * subtypes assignable, so callers don't need `as unknown as Block` casts.
+ */
+export type EditableBlock = Pick<Block, 'uid'>;
+
+/**
  * Helper function to get editable props
  */
-export function editable(block: Block): { 'data-flyo-uid'?: string } {
+export function editable(block: EditableBlock): { 'data-flyo-uid'?: string } {
   if (typeof block.uid === 'string' && block.uid.trim() !== '') {
     return { 'data-flyo-uid': block.uid };
   }
@@ -288,7 +301,7 @@ export function EditableSection({
   className,
   as: Tag = 'section',
 }: {
-  block: Block;
+  block: EditableBlock;
   children: React.ReactNode;
   className?: string;
   as?: React.ElementType;
