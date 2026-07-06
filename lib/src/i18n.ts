@@ -33,12 +33,23 @@ export interface FlyoLanguageLink {
  * Pure — no React or server-only APIs, so it is safe to call from server *or*
  * client components.
  *
+ * **Render each link as a native `<a>`, not `next/link`'s `<Link>`.** A language
+ * switch must refresh the shared chrome — the localized nav, footer and
+ * `<html lang>` — that lives in the root layout. In the Next.js App Router, soft
+ * (client-side) navigation re-renders only the page segment, *not* shared
+ * layouts, so a `<Link>` would leave that chrome in the previous language while
+ * only the page body updates. A plain `<a>` triggers a full-document navigation,
+ * forcing a fresh server render in the new locale so every part updates. (Regular
+ * nav links can stay `<Link>` — the nav is identical within a language.)
+ *
  * @example
  * ```tsx
  * const links = getLanguageLinks(page.translation, {
  *   currentLang: lang,
  *   locales: flyo.state.locales,
  * });
+ * // Native <a> (full-document nav) — NOT next/link, so shared layout chrome
+ * // re-renders in the new locale.
  * // links.map(l => l.exists
  * //   ? <a key={l.shortcode} href={l.href!} aria-current={l.isCurrent || undefined}>{l.name ?? l.shortcode}</a>
  * //   : <span key={l.shortcode} aria-disabled>{l.shortcode}</span>)

@@ -732,6 +732,8 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
 
 Each `FlyoLanguageLink` is `{ shortcode, name?, href, title?, isCurrent, exists }`. For an entity page use `getLanguageLinks(entity.translation, { currentLang: entity.language, locales: flyo.state.locales })`.
 
+> **Use a native `<a>` for the switcher links — not `<Link>` from `next/link`.** This is intentional, and switching to `<Link>` reintroduces a bug. A language switch has to refresh the shared chrome — the localized nav (from `getNitroConfig()`), the footer, `<html lang>`, and anything else language-dependent — all of which live in your **root layout** (`app/layout.tsx`). In the App Router, soft (client-side) navigation with `<Link>` re-renders only the page segment below the layout, **not** the shared layouts themselves. So a `<Link>` switcher updates the page body into the new language but leaves the header, footer and `<html lang>` stale in the old one. A plain `<a>` triggers a full-document navigation, which forces a fresh server render for the new locale so *every* part updates. Keep your normal nav links (step 4) as `<Link>` — within a single language the nav is identical, so soft navigation there is correct and faster.
+
 #### hreflang (SEO)
 
 `nitroPageGenerateMetadata` and `nitroEntityGenerateMetadata` automatically emit `alternates.languages` (plus a canonical) from `translation[]`, so Next.js renders `<link rel="alternate" hreflang="…">` tags. No extra work.

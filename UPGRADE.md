@@ -86,6 +86,8 @@ const links = getLanguageLinks(page.translation, { currentLang: lang, locales: f
 // each link: { shortcode, name?, href, title?, isCurrent, exists }
 ```
 
+> Render each switcher link as a native `<a href={l.href}>`, **not** `next/link`'s `<Link>`. A language switch must refresh the shared chrome (localized nav, footer, `<html lang>`) that lives in your root layout, and App Router soft navigation re-renders only the page segment — so `<Link>` leaves that chrome stale in the old language. A plain `<a>` forces a full server render in the new locale. Your normal nav links stay `<Link>`. See the README **"Language switcher"** section for the full rationale.
+
 ### 6. hreflang — automatic
 
 Nothing to do: `nitroPageGenerateMetadata` and `nitroEntityGenerateMetadata` emit `alternates.languages` from `translation[]`.

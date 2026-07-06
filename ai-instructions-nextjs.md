@@ -729,6 +729,8 @@ const { page, lang } = await flyo.pageResolveRoute(props);
 const links = getLanguageLinks(page.translation, { currentLang: lang, locales: flyo.state.locales });
 ```
 
+**Render the switcher links as native `<a href={l.href}>` elements — never `next/link`'s `<Link>`.** A language switch has to refresh the shared chrome (localized nav, footer, `<html lang>`) that lives in the root layout, and App Router soft navigation re-renders only the page segment — a `<Link>` switcher leaves the header/footer/`<html lang>` stuck in the old language while only the page body updates. A plain `<a>` forces a full-document navigation and a fresh server render in the new locale. Keep the ordinary nav links in the layout as `<Link>` (soft nav is correct there, since the nav is identical within a language).
+
 `hreflang` alternates are emitted automatically by `nitroPageGenerateMetadata` / `nitroEntityGenerateMetadata`.
 
 See the "Multilanguage (i18n)" section of the README for full details.
