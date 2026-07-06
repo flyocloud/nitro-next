@@ -8,6 +8,32 @@
 
 > **⚠️ Important:** This library is designed exclusively for Next.js **App Router**. It requires server-side setup and is not compatible with the Pages Router. Make sure your Next.js project is using the App Router architecture.
 
+<details>
+<summary><strong>AI coding agent instructions — Next.js integration</strong></summary>
+
+The file [ai-instructions-nextjs.md](ai-instructions-nextjs.md) contains a complete advisory for integrating Flyo Nitro CMS into an **existing Next.js App Router project** using `@flyo/nitro-next`.
+
+It is written to be pasted directly into a coding agent (Claude, Copilot, Cursor, etc.) as a system prompt or task description.
+
+**Copy the raw instructions:**
+
+- GitHub raw URL: `https://raw.githubusercontent.com/flyocloud/nitro-nuxt/main/ai-instructions-nextjs.md`
+- Or open [ai-instructions-nextjs.md](ai-instructions-nextjs.md) and use the **Raw** button.
+
+The advisory covers:
+- Package installation and `flyo.config.tsx` setup
+- Proxy cache handling
+- TypeScript type generation from the Flyo OpenAPI schema
+- Layout `Header` and `Footer` components driven by Flyo containers
+- Root layout integration with `FlyoProvider`
+- Catch-all `app/[[...slug]]/page.tsx` route
+- WYSIWYG and image helper components
+- A reusable Claude skill (`.claude/skills/flyo-blocks/SKILL.md`) for block generation
+- Sitemap support
+- A final validation checklist
+
+</details>
+
 ## Usage
 
 ### 1. Installation
