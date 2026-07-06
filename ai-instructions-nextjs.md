@@ -609,9 +609,9 @@ import { FlyoImage } from '@/app/components/flyo/FlyoImage';
 ) : null}
 ```
 
-## Registering blocks
+## Registering the block
 
-After creating a block component, register it in `flyo.config.tsx`.
+After creating or updating the named block component, make sure it is registered in `flyo.config.tsx`.
 
 Example:
 
@@ -642,27 +642,23 @@ components: {
 }
 ```
 
-The registered component keys must match what Flyo Nitro expects from the CMS block definitions.
+The registered component key must match what Flyo Nitro expects from the CMS block definition for this block.
 
-## Optional example block
+## Final checklist after building the block
 
-Only create a dummy or example block if the user explicitly asks for a starter example or if there is already a real generated block type in `app/generated/flyo.ts`.
-
-Do not invent a fake block type that does not exist in the generated types.
-
-## Final checklist after generating blocks
-
-- Block files exist in `app/components/flyo/blocks`.
-- Each block imports the correct generated type from `app/generated/flyo.ts`.
+- The named block file exists in `app/components/flyo/blocks` (created or updated).
+- The block imports the correct generated type from `app/generated/flyo.ts`.
+- The design intent (brief, reference component, or mockup) is faithfully implemented and responsive.
+- If converting an existing component, its look and feel is preserved.
 - WYSIWYG fields use `AppWysiwyg`.
 - Images use `FlyoImage` where possible.
 - Slot rendering uses `NitroSlot` with `flyo`.
 - Components using `editable(block)` are client components.
-- All generated block components are registered in `flyo.config.tsx`.
+- The block is registered in `flyo.config.tsx`.
 - TypeScript passes.
 ````
 
-This replaces the earlier manual "Prepare starter Flyo block component convention" section and removes the separate block registration step from the main setup flow. Block creation and registration are now handled by the reusable Claude skill.
+This replaces the earlier manual "Prepare starter Flyo block component convention" section and removes the separate block registration step from the main setup flow. Building a named block from a design (or from an existing component) and registering it are now handled by the reusable Claude skill.
 
 ### 11. Create sitemap support
 Create:
