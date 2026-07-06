@@ -28,7 +28,7 @@ The advisory covers:
 - Root layout integration with `FlyoProvider`
 - Catch-all `app/[[...slug]]/page.tsx` route
 - WYSIWYG and image helper components
-- A reusable Claude skill (`.claude/skills/flyo-blocks/SKILL.md`) for block generation
+- A reusable Claude skill (`.claude/skills/flyo-block/SKILL.md`) for building a named block from a design or existing component
 - Sitemap support
 - A final validation checklist
 

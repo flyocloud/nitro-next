@@ -702,20 +702,28 @@ app/[[...slug]]/page.tsx exists
 app/components/flyo/wysiwyg/AppWysiwyg.tsx exists
 app/components/flyo/FlyoImage.tsx exists
 app/sitemap.ts exists
-.claude/skills/flyo-blocks/SKILL.md exists
+.claude/skills/flyo-block/SKILL.md exists
 The project builds successfully
 ```
 
 ## Follow-up workflow after setup
-After the base integration is complete, the next step is to generate real Flyo block components.
+After the base integration is complete, the next step is to build real Flyo block components from your designs, one named block at a time.
 
 Use the created Claude skill:
 
 ```
-.claude/skills/flyo-blocks/SKILL.md
+.claude/skills/flyo-block/SKILL.md
 ```
-Then ask the agent:
+Then ask the agent per block, providing a name and a design intent. Examples:
 
 ```
-Use the flyo-blocks skill. Inspect app/generated/flyo.ts, generate all missing Flyo block components in app/components/flyo/blocks, use AppWysiwyg and FlyoImage where appropriate, and register the generated block components in flyo.config.tsx.
+Use the flyo-block skill. Block: Hero. Create a decent-looking, responsive hero block based on the hero design.
+```
+
+```
+Use the flyo-block skill. Block: Hero. Convert the existing HeroBanner component into a Flyo hero block and keep its look and feel.
+```
+
+```
+Use the flyo-block skill. Block: Teaser. Update the existing Teaser block to match the new card design.
 ```
