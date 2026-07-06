@@ -5,6 +5,13 @@ import { highlightAndClick, wysiwyg, reload, scrollTo} from '@flyo/nitro-js-brid
 import { Block, Entity } from "@flyo/nitro-typescript";
 import type { ImageLoaderProps } from 'next/image';
 
+// Framework-agnostic language-links helper — re-exported here so client
+// components can build a language switcher from a page/entity `translation[]`
+// without importing from `/server` (which would pull server-only code into the
+// client bundle).
+export { getLanguageLinks } from './i18n';
+export type { FlyoLanguageLink } from './i18n';
+
 const FLYO_CDN_HOST = 'storage.flyo.cloud';
 
 /**

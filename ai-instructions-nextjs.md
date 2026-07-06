@@ -135,7 +135,7 @@ export function FlyoProvider({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 ```
-Adjust `lang` if the project uses another default language.
+Adjust `lang` if the project uses another default language. For a **multilingual** project, set `defaultLocale` and `locales` instead — see the Multilanguage step below.
 
 Do not create real block components yet unless the generated Flyo types are already available.
 
@@ -677,7 +677,63 @@ export default async function sitemap() {
 ```
 Ensure `SITE_URL` is configured correctly in production.
 
-### 12. Validation checklist
+### 12. Optional: Multilanguage (i18n)
+If the Flyo project is multilingual, make the integration locale-aware. Ask the user:
+
+```
+Is the site multilingual? If so, what is the primary language and which locales are used (e.g. de, en)?
+```
+
+If it is single-language, skip this step. For a multilingual project:
+
+1. Declare the locales in `flyo.config.tsx`:
+
+```
+export const flyo = initNitro({
+  accessToken,
+  baseUrl,
+  liveEdit,
+  defaultLocale: 'de',      // primary language (config.nitro.primary_language)
+  locales: ['de', 'en'],    // all supported locales
+  serverCacheTtl: 1200,
+  clientCacheTtl: 900,
+  components: { /* … */ },
+});
+```
+
+2. No change to `proxy.ts` — with `locales` configured, the proxy detects the locale from the first URL segment and sets an `x-flyo-locale` header for Server Components. Localized pages already resolve through the catch-all route, because page slugs are locale-prefixed and globally unique.
+
+3. In `app/layout.tsx`, set `<html lang>` from the localized config you already fetch there — its `nitro.language` is the resolved locale (no need for a separate `getRequestLocale()` call):
+
+```
+const config = await flyo.getNitroConfig(); // localized to the active request locale
+const lang = config.nitro?.language;        // the language this config resolved in
+// <html lang={lang}> …
+```
+
+4. Entity detail routes carry the locale as a route segment, because an entity's slug is shared across languages and needs `lang` to select the language. Use `app/[lang]/<segment>/[slug]/page.tsx` and pass `params.lang`:
+
+```
+const resolver: EntityResolver<{ lang: string; slug: string }> = async (params) => {
+  const { lang, slug } = await params;
+  return flyo.getNitroEntities().entityBySlug({ slug, typeId: <id>, lang });
+};
+```
+
+5. Build a language switcher from `getLanguageLinks()` (a typed array, no markup). Pass `flyo.state.locales` to include fallback entries for locales with no translation:
+
+```
+import { getLanguageLinks } from '@flyo/nitro-next/server'; // also available from '/client'
+
+const { page, lang } = await flyo.pageResolveRoute(props);
+const links = getLanguageLinks(page.translation, { currentLang: lang, locales: flyo.state.locales });
+```
+
+`hreflang` alternates are emitted automatically by `nitroPageGenerateMetadata` / `nitroEntityGenerateMetadata`.
+
+See the "Multilanguage (i18n)" section of the README for full details.
+
+### 13. Validation checklist
 After implementation, run:
 
 ```

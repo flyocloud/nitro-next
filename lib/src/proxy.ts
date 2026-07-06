@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import type { FlyoInstance } from './server';
 
 /**
@@ -26,8 +26,22 @@ import type { FlyoInstance } from './server';
 export function createProxy(flyo: FlyoInstance) {
   const { state } = flyo;
 
-  return function proxy() {
-    const res = NextResponse.next();
+  return function proxy(request: NextRequest) {
+    // Detect the active locale from the first path segment when it is a
+    // configured locale, and expose it to Server Components (layout, config,
+    // entity resolvers) via a request header. No rewrite: pages are addressed
+    // by their full locale-prefixed slug, which stays intact in the URL.
+    const firstSegment = request.nextUrl.pathname.split('/').filter(Boolean)[0];
+    const locale = firstSegment && state.locales.includes(firstSegment)
+      ? firstSegment
+      : (state.defaultLocale ?? undefined);
+
+    const requestHeaders = new Headers(request.headers);
+    if (locale) {
+      requestHeaders.set('x-flyo-locale', locale);
+    }
+
+    const res = NextResponse.next({ request: { headers: requestHeaders } });
 
     if (state.liveEdit) {
       // Development or live edit mode - no caching

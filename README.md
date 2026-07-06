@@ -81,7 +81,8 @@ export function FlyoProvider({ children }: { children: ReactNode }) {
 ```
 
 The `flyo` instance provides:
-- `flyo.getNitroConfig()` — Fetch the CMS configuration
+- `flyo.getNitroConfig(lang?)` — Fetch the CMS configuration (localized to the request locale when `lang` is omitted)
+- `flyo.getRequestLocale()` — Resolve the active request locale (see [Multilanguage](#12-multilanguage-i18n))
 - `flyo.getNitroPages()` — Get the Pages API client
 - `flyo.getNitroEntities()` — Get the Entities API client
 - `flyo.getNitroSitemap()` — Get the Sitemap API client
@@ -614,7 +615,130 @@ export default nitroEntityRoute(flyo, {
 
 This pattern works with any route structure: `[slug]`, `[id]`, `[uniqueid]`, `[whatever]` - you control the resolution logic!
 
-### 12. Sitemap Generation
+### 12. Multilanguage (i18n)
+
+Flyo Nitro is fully multilingual. This section shows how to make your Next.js app locale-aware.
+
+**How it maps to Next.js:** the App Router has **no built-in i18n routing**, so the pattern is *middleware to detect the locale* + the *catch-all route you already have*. Flyo does most of the work:
+
+- Every page has a **full, globally-unique slug** that includes its language prefix (`de/erleben`, `en/experience`). The `config.pages[]` routing table lists **all** languages, so your existing `app/[[...slug]]/page.tsx` already resolves every localized page — no extra routes.
+- Navigation (`config.containers`) and global content are returned **in the requested language** via a `?lang=` query parameter.
+- Pages and entities carry a `translation[]` array of their language alternates (with fully-resolved `href`s) — the data for a language switcher and `hreflang` tags.
+
+#### Configure your locales
+
+Declare your locales in `initNitro()`. `defaultLocale` is the primary language (it should match your Flyo project's primary language); `locales` lists every locale shortcode used as a URL prefix:
+
+```tsx
+export const flyo = initNitro({
+  accessToken,
+  baseUrl,
+  defaultLocale: 'de',        // primary language (config.nitro.primary_language)
+  locales: ['de', 'en'],      // all supported locales
+  components: { /* … */ },
+});
+```
+
+> The Flyo config API does not return the list of locales, so — like the other adapter's — you declare them here. A single-language site can omit both options and nothing changes.
+
+#### Proxy: automatic locale detection
+
+The proxy from step 3 becomes locale-aware automatically. It reads the first URL segment, and when it matches one of your `locales` it sets an `x-flyo-locale` request header so Server Components (your layout, config fetches, entity resolvers) know the active language. **Nothing to change in your `proxy.ts`.**
+
+#### Layout: localized nav + `<html lang>`
+
+The root layout has no route params, but it doesn't need them. `getNitroConfig()` (no argument) fetches the nav in the active request locale, and the response's **`nitro.language`** already tells you the language it resolved in — use that for `<html lang>`:
+
+```tsx
+import { flyo } from '@/flyo.config';
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const config = await flyo.getNitroConfig(); // localized to the active request locale
+  const lang = config.nitro?.language;        // the language this config resolved in
+
+  return (
+    <html lang={lang}>
+      <body>
+        {/* build your nav from config.containers … */}
+        {children}
+      </body>
+    </html>
+  );
+}
+```
+
+> `config.nitro.language` is always present (it's the primary language on a single-language site), so this works with or without i18n. Reach for `flyo.getRequestLocale()` only when you need the active locale *without* fetching the config or a page — e.g. inside an entity resolver on a route that has no `[lang]` segment. (It's also what `getNitroConfig()` uses internally to decide which language to request.)
+
+#### Pages: nothing to do
+
+Localized pages resolve through your existing catch-all route. `flyo.pageResolveRoute()` now also returns the resolved `lang`:
+
+```tsx
+const { page, path, lang, cfg } = await flyo.pageResolveRoute(props);
+```
+
+#### Entity detail routes
+
+An entity's slug is **shared across languages** — `entities/slug/<slug>` returns the primary language unless you pass `lang` — so entity routes carry the locale as a route segment. Create `app/[lang]/blog/[slug]/page.tsx` and pass `params.lang` to the resolver:
+
+```tsx
+import { nitroEntityRoute, nitroEntityGenerateMetadata, type EntityResolver } from '@flyo/nitro-next/server';
+import { flyo } from '@/flyo.config';
+import type { Entity } from '@flyo/nitro-typescript';
+
+const resolver: EntityResolver<{ lang: string; slug: string }> = async (params) => {
+  const { lang, slug } = await params;
+  return flyo.getNitroEntities().entityBySlug({ slug, typeId: 246, lang });
+};
+
+export const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
+export default nitroEntityRoute(flyo, {
+  resolver,
+  render: (entity: Entity) => <h1>{entity.entity?.entity_title}</h1>,
+});
+```
+
+> For a route without a `[lang]` segment, read the locale from the header instead: `const lang = await flyo.getRequestLocale();`.
+
+#### Language switcher
+
+`getLanguageLinks()` turns a page's or entity's `translation[]` into a **typed array** — no markup — so you render the switcher however you like. Pass `flyo.state.locales` to also get entries for locales that have *no* translation, so you can render a fallback:
+
+```tsx
+import { getLanguageLinks } from '@flyo/nitro-next/server'; // also available from '/client'
+import { flyo } from '@/flyo.config';
+
+export default async function Page(props: { params: Promise<{ slug?: string[] }> }) {
+  const { page, lang } = await flyo.pageResolveRoute(props);
+  const links = getLanguageLinks(page.translation, { currentLang: lang, locales: flyo.state.locales });
+
+  return (
+    <nav aria-label="Language">
+      <ul>
+        {links.map((l) =>
+          l.exists ? (
+            <li key={l.shortcode}>
+              <a href={l.href!} aria-current={l.isCurrent ? 'true' : undefined}>{l.name ?? l.shortcode}</a>
+            </li>
+          ) : (
+            <li key={l.shortcode} aria-disabled>{l.shortcode}</li>
+          ),
+        )}
+      </ul>
+    </nav>
+  );
+}
+```
+
+Each `FlyoLanguageLink` is `{ shortcode, name?, href, title?, isCurrent, exists }`. For an entity page use `getLanguageLinks(entity.translation, { currentLang: entity.language, locales: flyo.state.locales })`.
+
+#### hreflang (SEO)
+
+`nitroPageGenerateMetadata` and `nitroEntityGenerateMetadata` automatically emit `alternates.languages` (plus a canonical) from `translation[]`, so Next.js renders `<link rel="alternate" hreflang="…">` tags. No extra work.
+
+> **Note:** `flyo.sitemap()` currently emits one URL per item; a fully multilingual sitemap (all language variants) is a planned enhancement.
+
+### 13. Sitemap Generation
 
 Nitro provides automatic sitemap generation using the Flyo instance:
 
@@ -725,10 +849,14 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
   import { nitroEntityGenerateMetadata } from '@flyo/nitro-next/server';
   export const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
   ```
-- **`createProxy(flyo)`** – Create a Next.js middleware for cache control.
+- **`createProxy(flyo)`** – Create a Next.js middleware for cache control. When `locales` are configured it also detects the locale from the first URL segment and sets an `x-flyo-locale` request header for Server Components.
   ```tsx
   import { createProxy } from '@flyo/nitro-next/proxy';
   export default createProxy(flyo);
+  ```
+- **`getLanguageLinks(translations, options?)`** – Map a page's/entity's `translation[]` into a typed `FlyoLanguageLink[]` for a language switcher. Pure — also exported from `@flyo/nitro-next/client`. See [Multilanguage](#12-multilanguage-i18n).
+  ```ts
+  import { getLanguageLinks } from '@flyo/nitro-next/server';
   ```
 - **`NitroPage`** – Server component that renders a whole Nitro page by delegating to `NitroBlock` for each block. Requires `flyo` prop.
   ```tsx
@@ -761,12 +889,13 @@ After calling `initNitro()`, the returned instance exposes:
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `flyo.getNitroConfig()` | `Promise<ConfigResponse>` | Fetch the CMS config (React-cached) |
+| `flyo.getNitroConfig(lang?)` | `Promise<ConfigResponse>` | Fetch the CMS config, localized per locale (React-cached) |
+| `flyo.getRequestLocale()` | `Promise<string \| undefined>` | Active request locale from the `x-flyo-locale` header, falling back to `defaultLocale` |
 | `flyo.getNitroPages()` | `PagesApi` | Get the Pages API client |
 | `flyo.getNitroEntities()` | `EntitiesApi` | Get the Entities API client |
 | `flyo.getNitroSitemap()` | `SitemapApi` | Get the Sitemap API client |
 | `flyo.getNitroSearch()` | `SearchApi` | Get the Search API client |
-| `flyo.pageResolveRoute(props)` | `Promise<{ page, path, cfg }>` | Resolve a page from route params (React-cached) |
+| `flyo.pageResolveRoute(props)` | `Promise<{ page, path, lang, cfg }>` | Resolve a page from route params, incl. the active `lang` (React-cached) |
 | `flyo.sitemap()` | `Promise<MetadataRoute.Sitemap>` | Generate the Next.js sitemap |
 | `flyo.state` | `NitroState` | Access the configuration state |
 

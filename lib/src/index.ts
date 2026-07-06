@@ -15,14 +15,17 @@ export {
   // Factory functions for Next.js app router - Entities
   nitroEntityRoute,
   nitroEntityGenerateMetadata,
+  // i18n
+  getLanguageLinks,
   // Types
   type FlyoInstance,
   type EntityResolver,
   type NitroState,
+  type FlyoLanguageLink,
 } from './server';
 
 // Re-export types from Flyo SDK for convenience
-export type { Entity, Block, Page, ConfigResponse } from '@flyo/nitro-typescript';
+export type { Entity, Block, Page, ConfigResponse, Translation } from '@flyo/nitro-typescript';
 
 // Re-export client utilities for convenience
 // FlyoCdnLoader is re-exported here because it's a pure utility function without React hooks

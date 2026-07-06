@@ -12,15 +12,22 @@ import {
   nitroPageGenerateStaticParams,
   nitroEntityRoute,
   nitroEntityGenerateMetadata,
+  getLanguageLinks,
   type FlyoInstance,
 } from './server';
-import { Configuration, Page, Block, Entity } from '@flyo/nitro-typescript';
+import { headers } from 'next/headers';
+import { Configuration, ConfigApi, PagesApi, Page, Block, Entity } from '@flyo/nitro-typescript';
 
 // Mock next/navigation
 jest.mock('next/navigation', () => ({
   notFound: jest.fn(() => {
     throw new Error('Not Found');
   }),
+}));
+
+// Mock next/headers (only available inside a Next.js request scope)
+jest.mock('next/headers', () => ({
+  headers: jest.fn(async () => ({ get: () => null })),
 }));
 
 // Mock @flyo/nitro-typescript
@@ -113,6 +120,24 @@ describe('initNitro', () => {
   it('sets showMissingComponentAlert from liveEdit when not explicitly set', () => {
     const flyo = initNitro({ accessToken: 'test', liveEdit: true });
     expect(flyo.state.showMissingComponentAlert).toBe(true);
+  });
+
+  it('defaults defaultLocale and locales from lang', () => {
+    const flyo = initNitro({ accessToken: 'test', lang: 'de' });
+    expect(flyo.state.defaultLocale).toBe('de');
+    expect(flyo.state.locales).toEqual(['de']);
+  });
+
+  it('uses explicit locales and defaultLocale', () => {
+    const flyo = initNitro({ accessToken: 'test', defaultLocale: 'de', locales: ['de', 'en'] });
+    expect(flyo.state.defaultLocale).toBe('de');
+    expect(flyo.state.locales).toEqual(['de', 'en']);
+  });
+
+  it('has empty locales and null defaultLocale when neither lang nor locales are set', () => {
+    const flyo = initNitro({ accessToken: 'test' });
+    expect(flyo.state.defaultLocale).toBeNull();
+    expect(flyo.state.locales).toEqual([]);
   });
 });
 
@@ -488,6 +513,73 @@ describe('Entity Route Factories', () => {
         )
       ).rejects.toThrow('Entity not found');
     });
+  });
+});
+
+describe('getLanguageLinks', () => {
+  const translations = [
+    { language: { shortcode: 'de', name: 'Deutsch' }, slug: 'de/x', title: 'DE', href: '/de/x' },
+    { language: { shortcode: 'en', name: 'Englisch' }, slug: 'en/x', title: 'EN', href: '/en/x' },
+  ];
+
+  it('maps translations to typed links and marks the current locale', () => {
+    const links = getLanguageLinks(translations, { currentLang: 'de' });
+    expect(links).toEqual([
+      { shortcode: 'de', name: 'Deutsch', href: '/de/x', title: 'DE', isCurrent: true, exists: true },
+      { shortcode: 'en', name: 'Englisch', href: '/en/x', title: 'EN', isCurrent: false, exists: true },
+    ]);
+  });
+
+  it('emits an entry per configured locale, with a fallback for missing translations', () => {
+    const links = getLanguageLinks([translations[0]], { currentLang: 'de', locales: ['de', 'en', 'fr'] });
+    expect(links.map((l) => [l.shortcode, l.exists, l.href])).toEqual([
+      ['de', true, '/de/x'],
+      ['en', false, null],
+      ['fr', false, null],
+    ]);
+  });
+
+  it('returns an empty array when there are no translations', () => {
+    expect(getLanguageLinks(undefined)).toEqual([]);
+  });
+});
+
+describe('i18n request handling', () => {
+  it('getRequestLocale falls back to defaultLocale when no header is present', async () => {
+    const flyo = initNitro({ accessToken: 'test', defaultLocale: 'de', locales: ['de', 'en'] });
+    await expect(flyo.getRequestLocale()).resolves.toBe('de');
+  });
+
+  it('getRequestLocale reads the x-flyo-locale header', async () => {
+    (headers as unknown as jest.Mock).mockResolvedValueOnce({
+      get: (key: string) => (key === 'x-flyo-locale' ? 'en' : null),
+    });
+    const flyo = initNitro({ accessToken: 'test', defaultLocale: 'de', locales: ['de', 'en'] });
+    await expect(flyo.getRequestLocale()).resolves.toBe('en');
+  });
+
+  it('pageResolveRoute returns the default locale for an unprefixed slug', async () => {
+    const flyo = initNitro({ accessToken: 'test', defaultLocale: 'en', locales: ['en', 'de'] });
+    const { path, lang } = await flyo.pageResolveRoute({
+      params: Promise.resolve({ slug: ['about'] }),
+    });
+    expect(path).toBe('about');
+    expect(lang).toBe('en');
+  });
+
+  it('pageResolveRoute derives the locale from a prefixed slug', async () => {
+    (ConfigApi as unknown as jest.Mock).mockImplementationOnce(() => ({
+      config: jest.fn().mockResolvedValue({ pages: ['de/about'] }),
+    }));
+    (PagesApi as unknown as jest.Mock).mockImplementationOnce(() => ({
+      page: jest.fn().mockResolvedValue({ title: 'DE About', translation: [] }),
+    }));
+    const flyo = initNitro({ accessToken: 'test', defaultLocale: 'en', locales: ['en', 'de'] });
+    const { path, lang } = await flyo.pageResolveRoute({
+      params: Promise.resolve({ slug: ['de', 'about'] }),
+    });
+    expect(path).toBe('de/about');
+    expect(lang).toBe('de');
   });
 });
 

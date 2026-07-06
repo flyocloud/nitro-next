@@ -1,6 +1,7 @@
 import { cache } from 'react';
 import type { Metadata, MetadataRoute } from 'next';
 import { notFound } from 'next/navigation';
+import { headers } from 'next/headers';
 import {
   Page,
   Block,
@@ -11,15 +12,27 @@ import {
   PagesApi,
   EntitiesApi,
   SitemapApi,
-  SearchApi
+  SearchApi,
+  type Translation
 } from '@flyo/nitro-typescript';
+
+// Re-export the framework-agnostic language-links helper + types so they are
+// available from `@flyo/nitro-next/server` alongside the rest of the server API.
+export { getLanguageLinks } from './i18n';
+export type { FlyoLanguageLink } from './i18n';
+export type { Translation } from '@flyo/nitro-typescript';
 
 /**
  * Read-only configuration state
  */
 export interface NitroState {
   readonly accessToken: string;
+  /** The single default language (back-compat). Prefer `defaultLocale` for i18n. */
   readonly lang: string | null;
+  /** All locale shortcodes the site supports, e.g. `['de', 'en']`. Empty for single-language setups. */
+  readonly locales: string[];
+  /** The primary/default locale (no URL prefix). Matches `config.nitro.primary_language`. */
+  readonly defaultLocale: string | null;
   readonly baseUrl: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly components: Record<string, any>;
@@ -58,8 +71,12 @@ export type EntityResolver<T = any> = (params: Promise<T>) => Promise<Entity>;
 export interface FlyoInstance {
   /** Read-only configuration state */
   readonly state: NitroState;
-  /** Fetch and cache the Nitro CMS configuration (React-cached per request) */
-  getNitroConfig(): Promise<ConfigResponse>;
+  /**
+   * Fetch and cache the Nitro CMS configuration (React-cached per requested locale).
+   * When `lang` is omitted, the active request locale is used (from the `x-flyo-locale`
+   * header set by the proxy), falling back to `defaultLocale`.
+   */
+  getNitroConfig(lang?: string): Promise<ConfigResponse>;
   /** Create a PagesApi client */
   getNitroPages(): PagesApi;
   /** Create an EntitiesApi client */
@@ -68,8 +85,14 @@ export interface FlyoInstance {
   getNitroSitemap(): SitemapApi;
   /** Create a SearchApi client */
   getNitroSearch(): SearchApi;
+  /**
+   * Resolve the active request locale from the `x-flyo-locale` header (set by the
+   * proxy middleware), falling back to `defaultLocale`. Use it inside entity
+   * resolvers or to set `<html lang>`.
+   */
+  getRequestLocale(): Promise<string | undefined>;
   /** Resolve a page from catch-all route params (React-cached per request) */
-  pageResolveRoute(props: RouteParams): Promise<{ page: Page; path: string; cfg: ConfigResponse }>;
+  pageResolveRoute(props: RouteParams): Promise<{ page: Page; path: string; lang: string | undefined; cfg: ConfigResponse }>;
   /** Generate a Next.js sitemap from Flyo Nitro content */
   sitemap(): Promise<MetadataRoute.Sitemap>;
 }
@@ -98,6 +121,8 @@ export interface FlyoInstance {
 export function initNitro({
   accessToken,
   lang,
+  locales,
+  defaultLocale,
   baseUrl,
   components,
   showMissingComponentAlert,
@@ -107,6 +132,10 @@ export function initNitro({
 }: {
   accessToken: string;
   lang?: string;
+  /** All supported locale shortcodes, e.g. `['de', 'en']`. Enables per-request i18n. */
+  locales?: string[];
+  /** The primary/default locale (no URL prefix). Defaults to `lang`. Should match `config.nitro.primary_language`. */
+  defaultLocale?: string;
   baseUrl?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   components?: Record<string, any>;
@@ -117,9 +146,14 @@ export function initNitro({
 }): FlyoInstance {
   const configuration = new Configuration({ apiKey: accessToken });
 
+  const resolvedDefaultLocale = defaultLocale ?? lang ?? null;
+  const resolvedLocales = locales ?? (resolvedDefaultLocale ? [resolvedDefaultLocale] : []);
+
   const state: NitroState = {
     accessToken,
     lang: lang ?? null,
+    locales: resolvedLocales,
+    defaultLocale: resolvedDefaultLocale,
     baseUrl: baseUrl ?? null,
     components: components ?? {},
     showMissingComponentAlert: showMissingComponentAlert ?? liveEdit ?? false,
@@ -128,24 +162,53 @@ export function initNitro({
     clientCacheTtl: clientCacheTtl ?? 900,
   };
 
-  const getNitroConfig = cache(async (): Promise<ConfigResponse> => {
+  const getRequestLocale = async (): Promise<string | undefined> => {
+    try {
+      const requestHeaders = await headers();
+      const headerLocale = requestHeaders.get('x-flyo-locale');
+      if (headerLocale) {
+        return headerLocale;
+      }
+    } catch {
+      // `headers()` throws outside a request scope (build time, tests, …) — fall back below.
+    }
+    return state.defaultLocale ?? state.lang ?? undefined;
+  };
+
+  // React-cached per requested locale, so different languages don't collide on
+  // one memoized value and the same locale is only fetched once per request.
+  const fetchConfig = cache(async (lang?: string): Promise<ConfigResponse> => {
     const configApi = new ConfigApi(configuration);
-    const useLang = state.lang ?? undefined;
-    return configApi.config({ lang: useLang });
+    return configApi.config({ lang: lang ?? undefined });
   });
+
+  const getNitroConfig = async (lang?: string): Promise<ConfigResponse> => {
+    const useLang = lang ?? (await getRequestLocale());
+    return fetchConfig(useLang);
+  };
 
   const pageResolveRoute = cache(async ({ params }: RouteParams) => {
     const { slug } = await params;
-    const path = slug?.join('/') ?? '';
+    const segments = slug ?? [];
+    // Pages are addressed by their full, globally-unique slug (locale prefix
+    // included), which is exactly what the catch-all captures — pass it through.
+    const path = segments.join('/');
 
-    const cfg = await getNitroConfig();
+    // Derive the active locale from the leading path segment when it is a
+    // configured locale (matches the Laravel adapter's `request()->segment(1)`).
+    const firstSegment = segments[0];
+    const lang = firstSegment && state.locales.includes(firstSegment)
+      ? firstSegment
+      : (state.defaultLocale ?? undefined);
+
+    const cfg = await getNitroConfig(lang);
 
     if (!cfg.pages?.includes(path)) {
       notFound();
     }
 
     const page = await new PagesApi(configuration)
-      .page({ slug: path })
+      .page({ slug: path, lang })
       .catch((error: unknown) => {
         console.error('Error fetching page:', path, error);
         notFound();
@@ -155,7 +218,7 @@ export function initNitro({
       notFound();
     }
 
-    return { page, path, cfg };
+    return { page, path, lang, cfg };
   });
 
   const sitemap = async (): Promise<MetadataRoute.Sitemap> => {
@@ -195,6 +258,7 @@ export function initNitro({
   return {
     state,
     getNitroConfig,
+    getRequestLocale,
     getNitroPages: () => new PagesApi(configuration),
     getNitroEntities: () => new EntitiesApi(configuration),
     getNitroSitemap: () => new SitemapApi(configuration),
@@ -216,6 +280,34 @@ const readEnv = (key: string, fallback = ""): string => {
   }
   return fallback;
 };
+
+/**
+ * Build Next.js `alternates` (hreflang + canonical) from a page's or entity's
+ * `translation[]`. Returns `undefined` when there are no linked translations.
+ */
+function buildLanguageAlternates(
+  translations: Translation[] | undefined,
+  currentLang?: string,
+): Metadata['alternates'] | undefined {
+  const languages: Record<string, string> = {};
+  let canonical: string | undefined;
+
+  for (const t of translations ?? []) {
+    const shortcode = t.language?.shortcode;
+    if (shortcode && t.href) {
+      languages[shortcode] = t.href;
+      if (currentLang && shortcode === currentLang) {
+        canonical = t.href;
+      }
+    }
+  }
+
+  if (Object.keys(languages).length === 0) {
+    return undefined;
+  }
+
+  return canonical ? { canonical, languages } : { languages };
+}
 
 /**
  * Internal helper to wrap and cache entity resolvers
@@ -459,7 +551,7 @@ export function nitroPageRoute(flyo: FlyoInstance) {
  */
 export function nitroPageGenerateMetadata(flyo: FlyoInstance) {
   return async (props: RouteParams): Promise<Metadata> => {
-    const { page } = await flyo.pageResolveRoute(props);
+    const { page, lang } = await flyo.pageResolveRoute(props);
 
     const meta = page.meta_json;
     const title = meta?.title || page.title || '';
@@ -469,9 +561,12 @@ export function nitroPageGenerateMetadata(flyo: FlyoInstance) {
     const ogImage = image ? `${image}/thumb/1200x630?format=jpg` : undefined;
     const twImage = image ? `${image}/thumb/1200x600?format=jpg` : undefined;
 
+    const alternates = buildLanguageAlternates(page.translation, lang);
+
     return {
       title,
       description,
+      ...(alternates ? { alternates } : {}),
       openGraph: {
         title,
         description,
@@ -584,9 +679,12 @@ export function nitroEntityGenerateMetadata<T = any>(
     const ogImage = image ? `${image}/thumb/1200x630?format=jpg` : undefined;
     const twImage = image ? `${image}/thumb/1200x600?format=jpg` : undefined;
 
+    const alternates = buildLanguageAlternates(entity.translation, entity.language);
+
     return {
       title,
       description,
+      ...(alternates ? { alternates } : {}),
       openGraph: {
         title,
         description,

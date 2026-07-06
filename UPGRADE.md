@@ -1,3 +1,107 @@
+# Upgrading from v2.0 to v2.1
+
+## Overview
+
+v2.1 adds **multilanguage (i18n)** support. It is **fully backward compatible**: if you don't set the new `locales` / `defaultLocale` options, nothing changes — your single-language site behaves exactly as on v2.0. Nothing is removed or renamed, so **no code changes are required** to keep your current behavior.
+
+What's new:
+
+- `locales` and `defaultLocale` options on `initNitro()`.
+- The proxy auto-detects the locale from the first URL segment and sets an `x-flyo-locale` request header (only when `locales` is configured).
+- `getNitroConfig(lang?)` takes an optional locale and is cached **per locale**; with no argument it resolves the active request locale automatically.
+- `flyo.pageResolveRoute()` now also returns the resolved `lang`.
+- New `flyo.getRequestLocale()` helper.
+- New `getLanguageLinks()` helper (typed language-switcher data) + `FlyoLanguageLink` type — exported from both `/server` and `/client`.
+- `nitroPageGenerateMetadata` / `nitroEntityGenerateMetadata` automatically emit `hreflang` alternates from `translation[]`.
+
+The steps below are only needed to **turn on** multilanguage.
+
+## Turning on multilanguage
+
+Flyo's model: page slugs are language-prefixed and globally unique (`de/erleben`, `en/experience`), and `config.pages[]` lists every language — so your existing catch-all route already resolves localized pages. Only navigation/globals (config) and entities need the active `lang`. See the README **"Multilanguage (i18n)"** section for the full explanation.
+
+### 1. Declare your locales — `flyo.config.tsx`
+
+```diff
+ export const flyo = initNitro({
+   accessToken,
+   baseUrl,
+   liveEdit,
++  defaultLocale: 'de',      // primary language (config.nitro.primary_language)
++  locales: ['de', 'en'],    // all supported locales
+   serverCacheTtl: 1200,
+   clientCacheTtl: 900,
+   components: { /* … */ },
+ });
+```
+
+### 2. Proxy — no change
+
+With `locales` configured, `createProxy(flyo)` also detects the locale and sets the `x-flyo-locale` header. Your `proxy.ts` file stays as-is.
+
+### 3. Layout — `<html lang>` + localized nav
+
+`getNitroConfig()` (no argument) now returns the nav in the active locale; use the response's `nitro.language` for `<html lang>`:
+
+```diff
+ export default async function RootLayout({ children }) {
+   const config = await flyo.getNitroConfig();
++  const lang = config.nitro?.language;
+
+   return (
+-    <html>
++    <html lang={lang}>
+       <body>{/* nav from config.containers … */}{children}</body>
+     </html>
+   );
+ }
+```
+
+### 4. Entity detail routes — add a `[lang]` segment
+
+An entity's slug is shared across languages, so you must pass `lang`. Move the route under a `[lang]` segment and read it from `params`:
+
+```diff
+- // app/blog/[slug]/page.tsx
++ // app/[lang]/blog/[slug]/page.tsx
+- const resolver: EntityResolver<{ slug: string }> = async (params) => {
+-   const { slug } = await params;
+-   return flyo.getNitroEntities().entityBySlug({ slug, typeId: 246 });
+- };
++ const resolver: EntityResolver<{ lang: string; slug: string }> = async (params) => {
++   const { lang, slug } = await params;
++   return flyo.getNitroEntities().entityBySlug({ slug, typeId: 246, lang });
++ };
+```
+
+### 5. Language switcher (optional)
+
+`getLanguageLinks()` returns typed data (no markup), so you render the switcher. Pass `flyo.state.locales` to also get fallback entries for locales with no translation:
+
+```tsx
+import { getLanguageLinks } from '@flyo/nitro-next/server'; // also from '/client'
+
+const { page, lang } = await flyo.pageResolveRoute(props);
+const links = getLanguageLinks(page.translation, { currentLang: lang, locales: flyo.state.locales });
+// each link: { shortcode, name?, href, title?, isCurrent, exists }
+```
+
+### 6. hreflang — automatic
+
+Nothing to do: `nitroPageGenerateMetadata` and `nitroEntityGenerateMetadata` emit `alternates.languages` from `translation[]`.
+
+## New API in v2.1 (all additive)
+
+| Added | Where | Description |
+|-------|-------|-------------|
+| `initNitro({ locales, defaultLocale })` | `/server` | Declare supported locales + primary language. |
+| `flyo.getRequestLocale()` | instance | Active request locale (header → `defaultLocale`). |
+| `flyo.getNitroConfig(lang?)` | instance | Optional per-locale config (previously no-arg). |
+| `flyo.pageResolveRoute()` → `{ page, path, lang, cfg }` | instance | Now also returns the resolved locale. |
+| `getLanguageLinks()` / `FlyoLanguageLink` | `/server` + `/client` | Typed language-switcher data. |
+
+---
+
 # Upgrading from v1 to v2
 
 ## Overview
