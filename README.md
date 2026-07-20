@@ -93,7 +93,7 @@ The `flyo` instance provides:
 
 ### 3. Setup Proxy
 
-Create a `proxy.ts` file in the `src/` directory to handle cache control:
+Create a `proxy.ts` file at the **project root** (next to `flyo.config.tsx`) to handle cache control:
 
 ```tsx
 import { createProxy } from '@flyo/nitro-next/proxy';
@@ -229,7 +229,7 @@ Add a `flyo:types` script to your `package.json`:
 ```json
 {
   "scripts": {
-    "flyo:types": "npx -y openapi-typescript@latest 'https://api.flyo.cloud/nitro/v1/openapi/schemas?token=<YOUR_TOKEN>' -o ./src/generated/flyo.ts --root-types --root-types-no-schema-prefix --export-type"
+    "flyo:types": "npx -y openapi-typescript@latest 'https://api.flyo.cloud/nitro/v1/openapi/schemas?token=<YOUR_TOKEN>' -o ./generated/flyo.ts --root-types --root-types-no-schema-prefix --export-type"
   }
 }
 ```
@@ -240,7 +240,9 @@ Replace `<YOUR_TOKEN>` with your Flyo develop token. Then run:
 npm run flyo:types
 ```
 
-This writes `./src/generated/flyo.ts` containing a type for each of your blocks (for example `BlockHero`, `BlockText`, …), as well as your entities and containers.
+This writes `./generated/flyo.ts` containing a type for each of your blocks (for example `BlockHero`, `BlockText`, …), as well as your entities and containers.
+
+> **Where things live:** `flyo.config.tsx`, `proxy.ts`, your `components/` and the `generated/` types directory are all **global, app-wide code** and belong at the **project root** — as siblings of `app/`, not inside it. Only Next.js routing files (route segments, `layout.tsx`, `page.tsx`, `not-found.tsx`, `sitemap.ts`) live in `app/`. (If your project uses a `src/` folder, place all of these under `src/` instead — e.g. `src/generated/flyo.ts` and `src/components/` — keeping them siblings of `src/app/`.)
 
 What the flags do:
 - `--root-types` / `--root-types-no-schema-prefix` — export each schema as a top-level type alias (e.g. `BlockHero`) instead of nesting it under `components['schemas']`.
@@ -254,7 +256,7 @@ Now you can type a component's `block` prop with the exact generated type instea
 'use client';
 
 import { editable } from "@flyo/nitro-next/client";
-import type { BlockHero } from "@/src/generated/flyo";
+import type { BlockHero } from "@/generated/flyo";
 
 export function FlyoHero({ block }: { block: BlockHero }) {
   return (
