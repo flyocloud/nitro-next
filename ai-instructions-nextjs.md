@@ -13,16 +13,23 @@ Before changing files, verify that the project uses the `app/` directory. If the
 
 This project does **not** use a `src/` folder. Use the root-level `app/` structure.
 
+Only Next.js **routing files** belong inside `app/` — route segments, `layout.tsx`, `page.tsx`, `not-found.tsx`, `sitemap.ts` and route handlers. Everything else is **global, app-wide code** and lives at the **project root** as siblings of `app/` — never inside it. This means `flyo.config.tsx`, `proxy.ts`, reusable `components/`, and the `generated/` types directory all sit at the root, next to `app/`.
+
 Use these conventions:
 
 ```
-app/generated/flyo.ts
-app/components/layout/Header.tsx
-app/components/layout/Footer.tsx
-app/components/flyo/FlyoImage.tsx
-app/components/flyo/wysiwyg/AppWysiwyg.tsx
-app/components/flyo/blocks
+flyo.config.tsx                              # project root
+proxy.ts                                     # project root
+generated/flyo.ts                            # root-level, NOT app/generated
+components/layout/Header.tsx                 # root-level, NOT app/components
+components/layout/Footer.tsx
+components/flyo/FlyoImage.tsx
+components/flyo/wysiwyg/AppWysiwyg.tsx
+components/flyo/blocks
 ```
+
+Do **not** place components, blocks, WYSIWYG helpers or generated types under `app/`. They are not routes.
+
 Do not hardcode secrets into source files. The Flyo access token must be stored in environment variables.
 
 Use TypeScript where the project supports it.
@@ -74,8 +81,8 @@ Use those identifiers in the `Header` and `Footer` components.
 The components should not be named `FlyoHeader` or `FlyoFooter`, because they are regular layout components. Use neutral layout names:
 
 ```
-app/components/layout/Header.tsx
-app/components/layout/Footer.tsx
+components/layout/Header.tsx
+components/layout/Footer.tsx
 ```
 
 ## Implementation steps
@@ -163,14 +170,14 @@ Keep `proxy.ts` at the project root because the project uses a root-level `app/`
 Create the generated types directory:
 
 ```
-app/generated
+generated
 ```
 Add this script to `package.json`:
 
 ```
 {
   "scripts": {
-    "flyo:types": "npx -y openapi-typescript@latest 'https://api.flyo.cloud/nitro/v1/openapi/schemas?token=$FLYO_ACCESS_TOKEN' -o ./app/generated/flyo.ts --root-types --root-types-no-schema-prefix --export-type"
+    "flyo:types": "npx -y openapi-typescript@latest 'https://api.flyo.cloud/nitro/v1/openapi/schemas?token=$FLYO_ACCESS_TOKEN' -o ./generated/flyo.ts --root-types --root-types-no-schema-prefix --export-type"
   }
 }
 ```
@@ -182,7 +189,7 @@ npm run flyo:types
 The direct command is:
 
 ```
-npx -y openapi-typescript@latest 'https://api.flyo.cloud/nitro/v1/openapi/schemas?token=flyotoken' -o ./app/generated/flyo.ts --root-types --root-types-no-schema-prefix --export-type
+npx -y openapi-typescript@latest 'https://api.flyo.cloud/nitro/v1/openapi/schemas?token=flyotoken' -o ./generated/flyo.ts --root-types --root-types-no-schema-prefix --export-type
 ```
 Replace `flyotoken` with the real Flyo access token.
 
@@ -192,8 +199,8 @@ If shell variable expansion inside the npm script is problematic on the current 
 Create:
 
 ```
-app/components/layout/Header.tsx
-app/components/layout/Footer.tsx
+components/layout/Header.tsx
+components/layout/Footer.tsx
 ```
 Use the user-provided Flyo container identifiers.
 
@@ -282,8 +289,8 @@ Example:
 ```
 import { FlyoProvider, flyo } from '@/flyo.config';
 import { NitroDebugInfo } from '@flyo/nitro-next/server';
-import { Header } from '@/app/components/layout/Header';
-import { Footer } from '@/app/components/layout/Footer';
+import { Header } from '@/components/layout/Header';
+import { Footer } from '@/components/layout/Footer';
 
 export default async function RootLayout({
   children,
@@ -342,7 +349,7 @@ Most Flyo Nitro projects use WYSIWYG fields. Create a reusable wrapper even if t
 Create:
 
 ```
-app/components/flyo/wysiwyg/AppWysiwyg.tsx
+components/flyo/wysiwyg/AppWysiwyg.tsx
 ```
 Use:
 
@@ -378,7 +385,7 @@ Use this wrapper in Flyo block components whenever a block contains WYSIWYG JSON
 Create:
 
 ```
-app/components/flyo/FlyoImage.tsx
+components/flyo/FlyoImage.tsx
 ```
 Use the Flyo CDN loader with Next.js Image:
 
@@ -464,23 +471,25 @@ No src folder
 Root-level app directory
 ```
 
+Global, app-wide code (config, components, blocks, generated types) lives at the **project root** as a sibling of `app/`. Only routing files (route segments, `layout.tsx`, `page.tsx`, `not-found.tsx`, `sitemap.ts`) go inside `app/`.
+
 Generated Flyo types are located at:
 
 ```txt
-app/generated/flyo.ts
+generated/flyo.ts
 ```
 
 Flyo block components should be placed in:
 
 ```txt
-app/components/flyo/blocks
+components/flyo/blocks
 ```
 
 Shared Flyo helpers are available at:
 
 ```txt
-app/components/flyo/wysiwyg/AppWysiwyg.tsx
-app/components/flyo/FlyoImage.tsx
+components/flyo/wysiwyg/AppWysiwyg.tsx
+components/flyo/FlyoImage.tsx
 flyo.config.tsx
 ```
 
@@ -494,18 +503,18 @@ Before writing code, make sure you know:
    - a brief in the prompt, or
    - an existing component/file to convert or match, or
    - a visual reference.
-4. The matching **generated block type** in `app/generated/flyo.ts`.
+4. The matching **generated block type** in `generated/flyo.ts`.
 
-If the user only gives a name and a design but there is no matching type in `app/generated/flyo.ts`, ask them to confirm the CMS block identifier (or run `npm run flyo:types`) before inventing fields.
+If the user only gives a name and a design but there is no matching type in `generated/flyo.ts`, ask them to confirm the CMS block identifier (or run `npm run flyo:types`) before inventing fields.
 
 ## Main task
 
 When asked to build a named block:
 
-1. Inspect `app/generated/flyo.ts` and find the generated type that matches the requested block name.
+1. Inspect `generated/flyo.ts` and find the generated type that matches the requested block name.
 2. If converting an existing component, read that component fully and note its markup, styling approach, props and layout.
 3. Map the design's visual pieces (heading, text, image, buttons, background, layout) onto the block's real CMS fields from the generated type.
-4. Create or update the block component in `app/components/flyo/blocks` using the block name (for example `HeroBlock.tsx`).
+4. Create or update the block component in `components/flyo/blocks` using the block name (for example `HeroBlock.tsx`).
 5. Implement the design faithfully: responsive layout, sensible spacing, and the project's existing design system where one exists.
 6. Use `AppWysiwyg` for WYSIWYG JSON fields.
 7. Use `FlyoImage` for Flyo media/image fields where possible.
@@ -519,7 +528,7 @@ When asked to build a named block:
 When the user points to an existing component ("base it on the existing `HeroBanner`"):
 
 1. Read the referenced component and preserve its look and feel (class names, layout, spacing, variants).
-2. Replace its hardcoded/static props with the block's CMS fields from `app/generated/flyo.ts`.
+2. Replace its hardcoded/static props with the block's CMS fields from `generated/flyo.ts`.
 3. Keep the original styling and structure; only swap the data source and add the Flyo wiring (`editable`, `AppWysiwyg`, `FlyoImage`, slots).
 4. If the original component should stay as a presentational component, you may keep it and have the block wrap it, passing CMS values as props — whichever keeps the design intact with the least duplication.
 
@@ -532,7 +541,7 @@ When the user points to an existing component ("base it on the existing `HeroBan
 
 ## Important rules
 
-Always inspect `app/generated/flyo.ts` before creating or updating a block.
+Always inspect `generated/flyo.ts` before creating or updating a block.
 
 Do not guess field names if the generated type definitions are available.
 
@@ -550,7 +559,7 @@ Use this when the block does not render nested Flyo slots and needs `editable(bl
 'use client';
 
 import { editable } from '@flyo/nitro-next/client';
-import type { BlockExample } from '@/app/generated/flyo';
+import type { BlockExample } from '@/generated/flyo';
 
 export function ExampleBlock({ block }: { block: BlockExample }) {
   return (
@@ -569,7 +578,7 @@ Use this when the block renders nested blocks through slots:
 import { NitroSlot } from '@flyo/nitro-next/server';
 import { EditableSection } from '@flyo/nitro-next/client';
 import { flyo } from '@/flyo.config';
-import type { BlockExampleContainer } from '@/app/generated/flyo';
+import type { BlockExampleContainer } from '@/generated/flyo';
 
 export function ExampleContainerBlock({
   block,
@@ -587,7 +596,7 @@ export function ExampleContainerBlock({
 ## WYSIWYG usage
 
 ```tsx
-import { AppWysiwyg } from '@/app/components/flyo/wysiwyg/AppWysiwyg';
+import { AppWysiwyg } from '@/components/flyo/wysiwyg/AppWysiwyg';
 
 {block.content?.text ? (
   <AppWysiwyg json={block.content.text} />
@@ -597,7 +606,7 @@ import { AppWysiwyg } from '@/app/components/flyo/wysiwyg/AppWysiwyg';
 ## Image usage
 
 ```tsx
-import { FlyoImage } from '@/app/components/flyo/FlyoImage';
+import { FlyoImage } from '@/components/flyo/FlyoImage';
 
 {block.content?.image?.source ? (
   <FlyoImage
@@ -616,7 +625,7 @@ After creating or updating the named block component, make sure it is registered
 Example:
 
 ```tsx
-import { ExampleBlock } from '@/app/components/flyo/blocks/ExampleBlock';
+import { ExampleBlock } from '@/components/flyo/blocks/ExampleBlock';
 
 export const flyo = initNitro({
   accessToken,
@@ -646,8 +655,8 @@ The registered component key must match what Flyo Nitro expects from the CMS blo
 
 ## Final checklist after building the block
 
-- The named block file exists in `app/components/flyo/blocks` (created or updated).
-- The block imports the correct generated type from `app/generated/flyo.ts`.
+- The named block file exists in `components/flyo/blocks` (created or updated).
+- The block imports the correct generated type from `generated/flyo.ts`.
 - The design intent (brief, reference component, or mockup) is faithfully implemented and responsive.
 - If converting an existing component, its look and feel is preserved.
 - WYSIWYG fields use `AppWysiwyg`.
@@ -752,13 +761,13 @@ Verify:
 flyo.config.tsx exists and exports flyo and FlyoProvider
 proxy.ts exists at the project root
 app/layout.tsx is wrapped with FlyoProvider
-app/components/layout/Header.tsx exists
-app/components/layout/Footer.tsx exists
+components/layout/Header.tsx exists
+components/layout/Footer.tsx exists
 Header and Footer use the user-provided Flyo container identifiers
-app/generated/flyo.ts exists
+generated/flyo.ts exists
 app/[[...slug]]/page.tsx exists
-app/components/flyo/wysiwyg/AppWysiwyg.tsx exists
-app/components/flyo/FlyoImage.tsx exists
+components/flyo/wysiwyg/AppWysiwyg.tsx exists
+components/flyo/FlyoImage.tsx exists
 app/sitemap.ts exists
 .claude/skills/flyo-block/SKILL.md exists
 The project builds successfully
