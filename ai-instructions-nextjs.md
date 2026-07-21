@@ -744,7 +744,36 @@ const links = getLanguageLinks(page.translation, { currentLang: lang, locales: f
 
 See the "Multilanguage (i18n)" section of the README for full details.
 
-### 13. Validation checklist
+### 13. Create or update `AGENTS.md` so future agents have Flyo context
+So that any AI coding agent that works on this project later (Claude Code, Copilot, Cursor, etc.) automatically knows it is built on Flyo Nitro CMS and where to read the full library documentation, create — or update, if one already exists — an `AGENTS.md` file at the **project root**.
+
+`AGENTS.md` is the vendor-neutral convention that most coding agents read on startup. If the project already uses a tool-specific memory file such as `CLAUDE.md`, add the same Flyo section there as well (or have that file point at `AGENTS.md`). This mirrors the example `CLAUDE.md` in the Flyo Nitro README: <https://github.com/flyocloud/nitro-next/blob/main/README.md#example-claudemd>.
+
+Add a Flyo section that **self-references this library's documentation**, so the agent can pull in the full integration context (usage, API reference and this advisory) on demand while coding against the Flyo Nitro CMS library:
+
+```markdown
+# Flyo Nitro CMS
+
+This project uses the **Flyo Nitro** headless CMS via `@flyo/nitro-next` to manage its content. Pages are composed of CMS-driven blocks, plus entities and containers, rendered with the Next.js App Router.
+
+When working on any Flyo/Nitro code (blocks, entities, `flyo.config.tsx`, proxy, layout, sitemap), consult these sources for the full context of the library:
+
+- Usage guide & API reference: https://github.com/flyocloud/nitro-next#usage
+- AI integration advisory (raw): https://raw.githubusercontent.com/flyocloud/nitro-next/refs/heads/main/ai-instructions-nextjs.md
+- Full Nitro CMS documentation: https://docs.flyo.cloud/doc/integrations-nitro-cms
+
+Project conventions:
+
+- Next.js App Router, no `src/` folder.
+- Global, app-wide code (`flyo.config.tsx`, `proxy.ts`, `components/`, `generated/`) lives at the project root as a sibling of `app/`. Only routing files live in `app/`.
+- Flyo block components live in `components/flyo/blocks` and are registered in `flyo.config.tsx`.
+- Regenerate types with `npm run flyo:types` whenever CMS block fields change.
+- Build one named block at a time with the `.claude/skills/flyo-block` skill.
+```
+
+If an `AGENTS.md` already exists, **merge** this Flyo section into it rather than overwriting the file — preserve any existing project instructions.
+
+### 14. Validation checklist
 After implementation, run:
 
 ```
@@ -770,6 +799,7 @@ components/flyo/wysiwyg/AppWysiwyg.tsx exists
 components/flyo/FlyoImage.tsx exists
 app/sitemap.ts exists
 .claude/skills/flyo-block/SKILL.md exists
+AGENTS.md exists at the project root and references the Flyo Nitro docs (github.com/flyocloud/nitro-next#usage and the raw ai-instructions-nextjs.md)
 The project builds successfully
 ```
 
