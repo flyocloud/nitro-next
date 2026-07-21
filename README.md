@@ -916,16 +916,22 @@ npm run dev
 npm run playground
 ```
 
-## Example `CLAUDE.md`
+## Example `AGENTS.md`
 
-If you build your project with an AI coding assistant (such as Claude Code), drop a `CLAUDE.md` file in your project root so the assistant understands your stack and knows where to find the Flyo/Nitro documentation. Here is a minimal starting point you can copy and adapt:
+If you build your project with an AI coding assistant (Claude Code, Copilot, Cursor, etc.), drop an `AGENTS.md` file in your project root so the assistant understands your stack and knows where to find the Flyo/Nitro documentation. `AGENTS.md` is the vendor-neutral convention most coding agents read on startup — if your tool uses a specific memory file such as `CLAUDE.md`, use that name too (or have it reference `AGENTS.md`).
+
+Here is a minimal starting point you can copy and adapt. Note that it **self-references this library's docs** — the usage guide and the AI integration advisory — so the assistant can pull in the full Flyo Nitro setup and context on demand:
 
 ```markdown
-# Flyo
+# Flyo Nitro CMS
 
 This is the new XYZ website of XYZ.
 
-It uses the Headless CMS, Flyo Nitro, to manage the content of the website. The full documentation for Nitro CMS can be found here: https://docs.flyo.cloud/doc/integrations-nitro-cms
+It uses the **Flyo Nitro** headless CMS via `@flyo/nitro-next` to manage the content of the website. Pages are composed of CMS-driven blocks, plus entities and containers, rendered with the Next.js App Router.
 
-The Flyo Nitro CMS Next.js plugin/extension documentation can be found here: https://github.com/flyocloud/nitro-next regarding blocks, entities, and more.
+When working on any Flyo/Nitro code (blocks, entities, `flyo.config.tsx`, proxy, layout, sitemap), consult these sources for the full context of the library:
+
+- Usage guide & API reference: https://github.com/flyocloud/nitro-next#usage
+- AI integration advisory (raw): https://raw.githubusercontent.com/flyocloud/nitro-next/refs/heads/main/ai-instructions-nextjs.md
+- Full Nitro CMS documentation: https://docs.flyo.cloud/doc/integrations-nitro-cms
 ```
