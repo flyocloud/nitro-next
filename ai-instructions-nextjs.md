@@ -747,7 +747,7 @@ See the "Multilanguage (i18n)" section of the README for full details.
 ### 13. Create or update `AGENTS.md` so future agents have Flyo context
 So that any AI coding agent that works on this project later (Claude Code, Copilot, Cursor, etc.) automatically knows it is built on Flyo Nitro CMS and where to read the full library documentation, create — or update, if one already exists — an `AGENTS.md` file at the **project root**.
 
-`AGENTS.md` is the vendor-neutral convention that most coding agents read on startup. If the project already uses a tool-specific memory file such as `CLAUDE.md`, add the same Flyo section there as well (or have that file point at `AGENTS.md`). This mirrors the example `CLAUDE.md` in the Flyo Nitro README: <https://github.com/flyocloud/nitro-next/blob/main/README.md#example-claudemd>.
+`AGENTS.md` is the vendor-neutral convention that most coding agents read on startup. If the project already uses a tool-specific memory file such as `CLAUDE.md`, add the same Flyo section there as well (or have that file point at `AGENTS.md`). This mirrors the example `AGENTS.md` in the Flyo Nitro README: <https://github.com/flyocloud/nitro-next/blob/main/README.md#example-agentsmd>.
 
 Add a Flyo section that **self-references this library's documentation**, so the agent can pull in the full integration context (usage, API reference and this advisory) on demand while coding against the Flyo Nitro CMS library:
 
