@@ -14,6 +14,11 @@ import { readLanguageLinks } from '@flyo/nitro-next/server';
 export async function LanguageSwitcher() {
   const links = await readLanguageLinks();
 
+  // Empty only on a single-language site (no `locales` configured). With i18n on,
+  // every route publishes one entry per locale, so this branch never hits and the
+  // full switcher renders below. Returning null hides the switcher; if you'd
+  // rather always show something, render default locale-root links here instead —
+  // e.g. flyo.state.locales.map((l) => <a href={`/${l}`}>{l}</a>) for /de, /en, …
   if (links.length === 0) {
     return null;
   }
