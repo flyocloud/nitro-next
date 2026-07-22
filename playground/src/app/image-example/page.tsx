@@ -1,7 +1,14 @@
 import Image from 'next/image';
 import { FlyoCdnLoader } from '@flyo/nitro-next/client';
+import { getLanguageLinks, publishLanguageLinks } from '@flyo/nitro-next/server';
+import { flyo } from '@/flyo.config';
 
-export default function ImageExamplePage() {
+export default async function ImageExamplePage() {
+  // Custom route (no Flyo page/entity resolver) that still renders the shared
+  // footer switcher — publish a fallback so `readLanguageLinks()` resolves.
+  const currentLang = await flyo.getRequestLocale();
+  publishLanguageLinks(getLanguageLinks(undefined, { currentLang, locales: flyo.state.locales }));
+
   return (
     <div style={{ padding: '2rem' }}>
       <h1>Flyo CDN Image Loader Example</h1>

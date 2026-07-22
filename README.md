@@ -704,15 +704,45 @@ export default nitroEntityRoute(flyo, {
 
 #### Language switcher
 
-`getLanguageLinks()` turns a page's or entity's `translation[]` into a **typed array** — no markup — so you render the switcher however you like. Pass `flyo.state.locales` to also get entries for locales that have *no* translation, so you can render a fallback:
+A language switcher has **two separate concerns**, and mixing them up is the usual source of confusion:
+
+1. **Where the switcher data comes from** — a page's or entity's `translation[]`. This lives on the *content*, so you can only get it where the content is resolved: in the catch-all **page route** and in **every entity detail route**.
+2. **Where the switcher is rendered** — almost always in *shared chrome* (a footer, sometimes a header), which lives in your **root layout** (`app/layout.tsx`).
+
+Those two places are not the same component, and in the App Router the root layout is an **ancestor** of the page — data flows *down* the tree, so the layout (and its footer) **cannot receive `page.translation` as a prop from the page below it.** The bridge is a tiny request-scoped store: the route **publishes** the links, the footer **reads** them.
+
+##### Step 1 — build the links (page route + entity routes)
+
+`getLanguageLinks()` turns a `translation[]` into a **typed array** — no markup. Pass `flyo.state.locales` to also get an entry for every configured locale that has *no* translation, so you can render a disabled fallback. Each `FlyoLanguageLink` is `{ shortcode, name?, href, title?, isCurrent, exists }`.
+
+**You do this at both detail types**, because either kind of route can be the active page:
 
 ```tsx
-import { getLanguageLinks } from '@flyo/nitro-next/server'; // also available from '/client'
-import { flyo } from '@/flyo.config';
+// page route  → currentLang is the resolved page locale
+const links = getLanguageLinks(page.translation, {
+  currentLang: lang,
+  locales: flyo.state.locales,
+});
 
-export default async function Page(props: { params: Promise<{ slug?: string[] }> }) {
-  const { page, lang } = await flyo.pageResolveRoute(props);
-  const links = getLanguageLinks(page.translation, { currentLang: lang, locales: flyo.state.locales });
+// entity route → currentLang is the entity's own language
+const links = getLanguageLinks(entity.translation, {
+  currentLang: entity.language,
+  locales: flyo.state.locales,
+});
+```
+
+> **You rarely call `getLanguageLinks` yourself.** The Flyo route helpers already do — and already publish the result (Step 2): `pageResolveRoute` / `nitroPageRoute` publish the page's links, and `nitroEntityRoute` / `nitroEntityGenerateMetadata` publish the entity's. Call it (and `publishLanguageLinks`) by hand only on routes that render the shared switcher **without** going through those helpers — see Step 3.
+
+##### Step 2 — publish, then read in the footer
+
+The route publishes the links into a request-scoped store; the footer awaits them. Because the footer **awaits** a promise (rather than reading a value synchronously), it works no matter whether the root layout or the page renders first — `await` suspends the footer until the active route publishes:
+
+```tsx
+// components/LanguageSwitcher.tsx — a server component you drop into the footer
+import { readLanguageLinks } from '@flyo/nitro-next/server';
+
+export async function LanguageSwitcher() {
+  const links = await readLanguageLinks(); // published by the active page/entity route
 
   return (
     <nav aria-label="Language">
@@ -732,7 +762,52 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
 }
 ```
 
-Each `FlyoLanguageLink` is `{ shortcode, name?, href, title?, isCurrent, exists }`. For an entity page use `getLanguageLinks(entity.translation, { currentLang: entity.language, locales: flyo.state.locales })`.
+```tsx
+// app/layout.tsx — the footer lives in shared chrome
+import { Suspense } from 'react';
+import { flyo } from '@/flyo.config';
+import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const config = await flyo.getNitroConfig();
+  const lang = config.nitro?.language;
+
+  return (
+    <html lang={lang}>
+      <body>
+        {/* nav from config.containers … */}
+        {children}
+        <footer>
+          {/* Suspense lets the rest of the layout stream while the switcher
+              waits for the active route to publish its links. */}
+          <Suspense fallback={null}>
+            <LanguageSwitcher />
+          </Suspense>
+        </footer>
+      </body>
+    </html>
+  );
+}
+```
+
+##### Step 3 — routes that don't go through the helpers
+
+`readLanguageLinks()` waits until *something* publishes. Every route that renders the shared footer must therefore publish — the Flyo page/entity helpers do it for you, but a hand-written page or `not-found.tsx` must publish a fallback, or the switcher will wait forever:
+
+```tsx
+// app/not-found.tsx (or any custom route that renders the shared footer)
+import { getLanguageLinks, publishLanguageLinks } from '@flyo/nitro-next/server';
+import { flyo } from '@/flyo.config';
+
+export default async function NotFound() {
+  const currentLang = await flyo.getRequestLocale();
+  // No content translations here → fallback entries for every locale.
+  publishLanguageLinks(getLanguageLinks(undefined, { currentLang, locales: flyo.state.locales }));
+  return <h1>Page not found</h1>;
+}
+```
+
+> **Prefer a self-contained switcher?** If you would rather not use the store, compute the links in the page/entity and pass them down to a shared presentational `<SiteFooter links={links} />` that the **route** renders (keep only language-independent chrome in the root layout). That is fully reliable too — it just means the footer is composed per route instead of once in the layout.
 
 > **Use a native `<a>` for the switcher links — not `<Link>` from `next/link`.** This is intentional, and switching to `<Link>` reintroduces a bug. A language switch has to refresh the shared chrome — the localized nav (from `getNitroConfig()`), the footer, `<html lang>`, and anything else language-dependent — all of which live in your **root layout** (`app/layout.tsx`). In the App Router, soft (client-side) navigation with `<Link>` re-renders only the page segment below the layout, **not** the shared layouts themselves. So a `<Link>` switcher updates the page body into the new language but leaves the header, footer and `<html lang>` stale in the old one. A plain `<a>` triggers a full-document navigation, which forces a fresh server render for the new locale so *every* part updates. Keep your normal nav links (step 4) as `<Link>` — within a single language the nav is identical, so soft navigation there is correct and faster.
 
@@ -861,6 +936,10 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
 - **`getLanguageLinks(translations, options?)`** – Map a page's/entity's `translation[]` into a typed `FlyoLanguageLink[]` for a language switcher. Pure — also exported from `@flyo/nitro-next/client`. See [Multilanguage](#12-multilanguage-i18n).
   ```ts
   import { getLanguageLinks } from '@flyo/nitro-next/server';
+  ```
+- **`publishLanguageLinks(links)`** / **`readLanguageLinks()`** – Request-scoped bridge for a language switcher in *shared chrome* (e.g. a footer in the root layout, an ancestor of the page that can't receive `page.translation` as a prop). The active route **publishes** its links; the footer **awaits** them via `readLanguageLinks()`. `pageResolveRoute`, `nitroPageRoute`, `nitroEntityRoute`, and `nitroEntityGenerateMetadata` publish automatically; call `publishLanguageLinks` by hand on custom routes / `not-found.tsx`. See [Multilanguage → Language switcher](#12-multilanguage-i18n).
+  ```tsx
+  import { publishLanguageLinks, readLanguageLinks } from '@flyo/nitro-next/server';
   ```
 - **`NitroPage`** – Server component that renders a whole Nitro page by delegating to `NitroBlock` for each block. Requires `flyo` prop.
   ```tsx

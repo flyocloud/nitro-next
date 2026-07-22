@@ -33,6 +33,22 @@ export interface FlyoLanguageLink {
  * Pure — no React or server-only APIs, so it is safe to call from server *or*
  * client components.
  *
+ * This helper only *builds the data*. It says nothing about **where** you render
+ * the switcher. The `translation[]` comes from a page or entity, both resolved
+ * deep in the route tree — so you compute the links there, at **both** the page
+ * route and every entity route:
+ *
+ * ```tsx
+ * // page route:   getLanguageLinks(page.translation,   { currentLang: lang,            locales: flyo.state.locales })
+ * // entity route: getLanguageLinks(entity.translation, { currentLang: entity.language, locales: flyo.state.locales })
+ * ```
+ *
+ * A switcher usually lives in shared chrome (a footer) rendered by the **root
+ * layout** — an *ancestor* of the page, which cannot receive the page's data as
+ * props. To bridge that gap, publish the links from the route and read them in
+ * the footer: see `publishLanguageLinks` / `readLanguageLinks` in
+ * `@flyo/nitro-next/server` (the Flyo route helpers publish automatically).
+ *
  * **Render each link as a native `<a>`, not `next/link`'s `<Link>`.** A language
  * switch must refresh the shared chrome — the localized nav, footer and
  * `<html lang>` — that lives in the root layout. In the Next.js App Router, soft

@@ -13,6 +13,9 @@ import {
   nitroEntityRoute,
   nitroEntityGenerateMetadata,
   getLanguageLinks,
+  createLanguageLinksStore,
+  publishLanguageLinks,
+  readLanguageLinks,
   type FlyoInstance,
 } from './server';
 import { headers } from 'next/headers';
@@ -541,6 +544,53 @@ describe('getLanguageLinks', () => {
 
   it('returns an empty array when there are no translations', () => {
     expect(getLanguageLinks(undefined)).toEqual([]);
+  });
+});
+
+describe('language-links store (createLanguageLinksStore)', () => {
+  // The public publishLanguageLinks/readLanguageLinks wrap this factory in a
+  // per-request React `cache()`. `cache` only memoizes inside a real request
+  // scope (not under jest), so the request-independent store contract is tested
+  // directly here on a single store instance.
+  const translations = [
+    { language: { shortcode: 'de', name: 'Deutsch' }, slug: 'de/x', title: 'DE', href: '/de/x' },
+    { language: { shortcode: 'en', name: 'Englisch' }, slug: 'en/x', title: 'EN', href: '/en/x' },
+  ];
+
+  it('resolves a reader that awaited BEFORE the links were published', async () => {
+    // Mirrors a footer in the root layout rendering before the page resolves.
+    const store = createLanguageLinksStore();
+    const expected = getLanguageLinks(translations, { currentLang: 'de' });
+
+    const read = store.read(); // await starts before publish
+    store.publish(expected);
+
+    await expect(read).resolves.toEqual(expected);
+  });
+
+  it('resolves a reader that awaits AFTER the links were published', async () => {
+    const store = createLanguageLinksStore();
+    const expected = getLanguageLinks(translations, { currentLang: 'en' });
+
+    store.publish(expected);
+
+    await expect(store.read()).resolves.toEqual(expected);
+  });
+
+  it('keeps the first published value (first publish wins)', async () => {
+    const store = createLanguageLinksStore();
+    const first = getLanguageLinks([translations[0]], { currentLang: 'de' });
+    const second = getLanguageLinks(translations, { currentLang: 'en' });
+
+    store.publish(first);
+    store.publish(second);
+
+    await expect(store.read()).resolves.toEqual(first);
+  });
+
+  it('exposes publishLanguageLinks / readLanguageLinks from the package', () => {
+    expect(typeof publishLanguageLinks).toBe('function');
+    expect(typeof readLanguageLinks).toBe('function');
   });
 });
 

@@ -17,6 +17,8 @@ export {
   nitroEntityGenerateMetadata,
   // i18n
   getLanguageLinks,
+  publishLanguageLinks,
+  readLanguageLinks,
   // Types
   type FlyoInstance,
   type EntityResolver,

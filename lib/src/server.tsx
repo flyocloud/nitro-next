@@ -18,8 +18,10 @@ import {
 
 // Re-export the framework-agnostic language-links helper + types so they are
 // available from `@flyo/nitro-next/server` alongside the rest of the server API.
-export { getLanguageLinks } from './i18n';
-export type { FlyoLanguageLink } from './i18n';
+// (Also imported locally below, for the request-scoped switcher store.)
+import { getLanguageLinks, type FlyoLanguageLink } from './i18n';
+export { getLanguageLinks };
+export type { FlyoLanguageLink };
 export type { Translation } from '@flyo/nitro-typescript';
 
 /**
@@ -218,6 +220,10 @@ export function initNitro({
       notFound();
     }
 
+    // Publish this page's switcher links so a switcher in shared chrome (e.g. a
+    // footer in the root layout) can read them via `readLanguageLinks()`.
+    publishLanguageLinks(getLanguageLinks(page.translation, { currentLang: lang, locales: state.locales }));
+
     return { page, path, lang, cfg };
   });
 
@@ -268,6 +274,113 @@ export function initNitro({
   };
 }
 
+// ─── Request-scoped language-switcher store ──────────────────────────────────
+//
+// A page's / entity's `translation[]` is resolved deep in the route tree (in the
+// catch-all page route or an entity detail route). A language switcher, however,
+// usually lives in *shared chrome* — a footer, say — that is rendered by the
+// **root layout**. In the App Router the root layout is an *ancestor* of the
+// page, so it cannot receive the page's data as props: data only flows down.
+//
+// This store bridges that gap. The page/entity route **publishes** its resolved
+// links; the switcher in the footer **reads** them. It is a per-request deferred,
+// created once per request via React `cache()` (so the layout and the page see
+// the *same* instance), holding a promise the footer awaits.
+//
+// Why the reader awaits a promise instead of reading a plain value: the root
+// layout (and therefore its footer) renders *above*, and concurrently with, the
+// page — so a synchronous read could run before the page has resolved. Awaiting
+// suspends the footer until the links are published, regardless of render order.
+
+export interface LanguageLinksStore {
+  /** Publish the links once. Later calls are ignored (first publish wins). */
+  publish(links: FlyoLanguageLink[]): void;
+  /** A promise that resolves when the links are published. */
+  read(): Promise<FlyoLanguageLink[]>;
+}
+
+/**
+ * Create a single deferred language-links channel: one writer, many readers,
+ * order-independent. Low-level — most code uses {@link publishLanguageLinks} /
+ * {@link readLanguageLinks}, which wrap this in a per-request `cache()`.
+ */
+export function createLanguageLinksStore(): LanguageLinksStore {
+  let resolve!: (links: FlyoLanguageLink[]) => void;
+  const promise = new Promise<FlyoLanguageLink[]>((r) => {
+    resolve = r;
+  });
+  let settled = false;
+  return {
+    publish(links: FlyoLanguageLink[]) {
+      // First publish wins — a route resolves once per request, and both the
+      // render pass and `generateMetadata` share this store, so guard against a
+      // double resolve.
+      if (!settled) {
+        settled = true;
+        resolve(links);
+      }
+    },
+    read() {
+      return promise;
+    },
+  };
+}
+
+// `cache()` gives one store per request, shared across the whole server
+// component tree for that request. A fresh request gets a fresh store.
+const languageLinksStore = cache(createLanguageLinksStore);
+
+/**
+ * Publish the current route's language-switcher links into the request-scoped
+ * store, so a switcher rendered in shared chrome (e.g. a footer in the root
+ * layout) can read them via {@link readLanguageLinks}.
+ *
+ * The Flyo route helpers call this for you: `pageResolveRoute` (and therefore
+ * `nitroPageRoute`) publishes the page's links, and `nitroEntityRoute` /
+ * `nitroEntityGenerateMetadata` publish the entity's. You only need to call it
+ * yourself on routes that render the shared switcher **without** going through
+ * those helpers — a custom page, or `not-found.tsx` — where you would otherwise
+ * leave the footer waiting forever. Pass a fallback there, e.g.
+ * `publishLanguageLinks(getLanguageLinks(undefined, { currentLang, locales }))`.
+ *
+ * Only the first call per request takes effect.
+ */
+export function publishLanguageLinks(links: FlyoLanguageLink[]): void {
+  languageLinksStore().publish(links);
+}
+
+/**
+ * Await the current route's language-switcher links from shared chrome — a
+ * footer, header, or any component in the root layout. Resolves with whatever
+ * the active page/entity route passed to {@link publishLanguageLinks}.
+ *
+ * Because it awaits, the reader suspends until the links are published, so it
+ * works no matter whether the layout or the page renders first. Wrap the reading
+ * component in `<Suspense>` so the rest of the layout can stream while it waits.
+ *
+ * @example
+ * ```tsx
+ * // components/LanguageSwitcher.tsx  (server component)
+ * import { readLanguageLinks } from '@flyo/nitro-next/server';
+ *
+ * export async function LanguageSwitcher() {
+ *   const links = await readLanguageLinks();
+ *   return (
+ *     <nav aria-label="Language">
+ *       {links.map((l) =>
+ *         l.exists
+ *           ? <a key={l.shortcode} href={l.href!} aria-current={l.isCurrent || undefined}>{l.name ?? l.shortcode}</a>
+ *           : <span key={l.shortcode} aria-disabled>{l.shortcode}</span>,
+ *       )}
+ *     </nav>
+ *   );
+ * }
+ * ```
+ */
+export function readLanguageLinks(): Promise<FlyoLanguageLink[]> {
+  return languageLinksStore().read();
+}
+
 // ─── Helper ──────────────────────────────────────────────────────────────────
 
 /**
@@ -310,9 +423,14 @@ function buildLanguageAlternates(
 }
 
 /**
- * Internal helper to wrap and cache entity resolvers
+ * Internal helper to wrap and cache entity resolvers.
+ *
+ * Also publishes the entity's language-switcher links into the request-scoped
+ * store (see {@link publishLanguageLinks}) so a switcher in shared chrome can
+ * read them via `readLanguageLinks()`.
  */
 function createCachedEntityResolver<T>(
+  flyo: FlyoInstance,
   resolver: EntityResolver<T>
 ): (props: EntityRouteParams<T>) => Promise<Entity> {
   return cache(async ({ params }: EntityRouteParams<T>) => {
@@ -321,6 +439,10 @@ function createCachedEntityResolver<T>(
     if (!entity) {
       notFound();
     }
+
+    publishLanguageLinks(
+      getLanguageLinks(entity.translation, { currentLang: entity.language, locales: flyo.state.locales }),
+    );
 
     return entity;
   });
@@ -634,7 +756,7 @@ export function nitroEntityRoute<T = any>(
     render?: (entity: Entity) => React.ReactNode;
   }
 ) {
-  const cachedResolver = createCachedEntityResolver(options.resolver);
+  const cachedResolver = createCachedEntityResolver(flyo, options.resolver);
 
   async function entityRoute(props: EntityRouteParams<T>) {
     const entity = await cachedResolver(props);
@@ -667,7 +789,7 @@ export function nitroEntityGenerateMetadata<T = any>(
     resolver: EntityResolver<T>;
   }
 ) {
-  const cachedResolver = createCachedEntityResolver(options.resolver);
+  const cachedResolver = createCachedEntityResolver(flyo, options.resolver);
 
   return async (props: EntityRouteParams<T>): Promise<Metadata> => {
     const entity = await cachedResolver(props);
