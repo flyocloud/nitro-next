@@ -731,7 +731,7 @@ const resolver: EntityResolver<{ lang: string; slug: string }> = async (params) 
 
 5. Language switcher. The switcher usually lives in *shared chrome* (a footer) in the root layout, which is an **ancestor** of the page and cannot receive `page.translation` as a prop. A request-scoped store bridges it: the active route **publishes** the links, the footer **reads** them.
 
-   - **Page and entity routes publish automatically** (`pageResolveRoute` / `nitroPageRoute` / `nitroEntityRoute` / `nitroEntityGenerateMetadata`) — no code needed. If the site is multilingual, build one `LanguageSwitcher` server component that reads the store, and drop it into the footer (or wherever), wrapped in `<Suspense>`:
+   - **Page and entity routes publish automatically** (`pageResolveRoute` / `nitroPageRoute` / `nitroEntityRoute` / `nitroEntityGenerateMetadata`) — no code needed. They also publish a fallback before every `notFound()`, so a real 404 settles the store too. If the site is multilingual, build one `LanguageSwitcher` server component that reads the store, and drop it into the footer (or wherever), wrapped in `<Suspense>`:
 
      ```
      // components/LanguageSwitcher.tsx
@@ -741,12 +741,14 @@ const resolver: EntityResolver<{ lang: string; slug: string }> = async (params) 
      // render links.map(...) as native <a> (see below)
      ```
 
-   - **Only routes Flyo does not resolve** (a hand-written page, `not-found.tsx`) must publish themselves, or `readLanguageLinks()` waits forever. `publishLanguageLinks()` takes a plain `FlyoLanguageLink[]`, so set them by hand — real links if the route is localized, or an empty array (or `getLanguageLinks(undefined, { currentLang, locales })` for disabled fallback entries) when it is not:
+   - **Only routes Flyo does not resolve** (a hand-written page) must publish themselves, or `readLanguageLinks()` waits forever. `publishLanguageLinks()` takes a plain `FlyoLanguageLink[]`, so set them by hand:
 
      ```
      import { publishLanguageLinks } from '@flyo/nitro-next/server';
-     publishLanguageLinks([]); // not-found / non-localized route: hide the switcher
+     publishLanguageLinks([ /* { shortcode, name, href, isCurrent, exists } per locale */ ]);
      ```
+
+   - **⚠️ Never call `publishLanguageLinks()` from `not-found.tsx`.** The App Router renders the root not-found boundary on **every** request (not only real 404s), and synchronously — ahead of a route's awaited CMS fetch. The store is first-write-wins, so a publish there settles it with the fallback before the real links arrive, making pages that *do* have translations show the home/fallback links. The route helpers already publish the fallback on `notFound()`, so leave `not-found.tsx` free of any switcher publishing.
 
 **Render the switcher links as native `<a href={l.href}>` elements — never `next/link`'s `<Link>`.** A language switch has to refresh the shared chrome (localized nav, footer, `<html lang>`) that lives in the root layout, and App Router soft navigation re-renders only the page segment — a `<Link>` switcher leaves the header/footer/`<html lang>` stuck in the old language while only the page body updates. A plain `<a>` forces a full-document navigation and a fresh server render in the new locale. Keep the ordinary nav links in the layout as `<Link>` (soft nav is correct there, since the nav is identical within a language).
 

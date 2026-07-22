@@ -5,8 +5,10 @@ import { readLanguageLinks } from '@flyo/nitro-next/server';
  *
  * The links are resolved by the active route — the catch-all page route and the
  * entity detail route publish them automatically (via `pageResolveRoute` /
- * `nitroEntityRoute`). Custom routes and `not-found.tsx` publish a fallback
- * themselves. This server component just awaits whatever was published.
+ * `nitroEntityRoute`), including a fallback before every `notFound()`, so real
+ * 404s settle the store too. Only custom routes Flyo doesn't resolve publish a
+ * fallback themselves (never `not-found.tsx`). This server component just awaits
+ * whatever was published.
  *
  * Rendered inside `<Suspense>` in the root layout, so the rest of the layout can
  * stream while this waits for the active route to publish.
