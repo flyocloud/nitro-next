@@ -33,6 +33,18 @@ export interface FlyoLanguageLink {
  * Pure — no React or server-only APIs, so it is safe to call from server *or*
  * client components.
  *
+ * This is a pure *data* helper — it maps a `translation[]` to switcher links and
+ * renders nothing. **The Flyo route helpers already call it for you and publish
+ * the result**, so page and entity routes need no switcher code at all; the
+ * footer just reads the store (see `publishLanguageLinks` / `readLanguageLinks`
+ * in `@flyo/nitro-next/server`). Call this directly only when you publish links
+ * by hand from a raw `translation[]` — e.g. on a custom route Flyo doesn't
+ * resolve:
+ *
+ * ```tsx
+ * getLanguageLinks(translations, { currentLang, locales });
+ * ```
+ *
  * **Render each link as a native `<a>`, not `next/link`'s `<Link>`.** A language
  * switch must refresh the shared chrome — the localized nav, footer and
  * `<html lang>` — that lives in the root layout. In the Next.js App Router, soft

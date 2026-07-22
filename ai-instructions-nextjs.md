@@ -729,14 +729,24 @@ const resolver: EntityResolver<{ lang: string; slug: string }> = async (params) 
 };
 ```
 
-5. Build a language switcher from `getLanguageLinks()` (a typed array, no markup). Pass `flyo.state.locales` to include fallback entries for locales with no translation:
+5. Language switcher. The switcher usually lives in *shared chrome* (a footer) in the root layout, which is an **ancestor** of the page and cannot receive `page.translation` as a prop. A request-scoped store bridges it: the active route **publishes** the links, the footer **reads** them.
 
-```
-import { getLanguageLinks } from '@flyo/nitro-next/server'; // also available from '/client'
+   - **Page and entity routes publish automatically** (`pageResolveRoute` / `nitroPageRoute` / `nitroEntityRoute` / `nitroEntityGenerateMetadata`) — no code needed. If the site is multilingual, build one `LanguageSwitcher` server component that reads the store, and drop it into the footer (or wherever), wrapped in `<Suspense>`:
 
-const { page, lang } = await flyo.pageResolveRoute(props);
-const links = getLanguageLinks(page.translation, { currentLang: lang, locales: flyo.state.locales });
-```
+     ```
+     // components/LanguageSwitcher.tsx
+     import { readLanguageLinks } from '@flyo/nitro-next/server';
+     const links = await readLanguageLinks();
+     if (links.length === 0) return null; // single-language site → no switcher
+     // render links.map(...) as native <a> (see below)
+     ```
+
+   - **Only routes Flyo does not resolve** (a hand-written page, `not-found.tsx`) must publish themselves, or `readLanguageLinks()` waits forever. `publishLanguageLinks()` takes a plain `FlyoLanguageLink[]`, so set them by hand — real links if the route is localized, or an empty array (or `getLanguageLinks(undefined, { currentLang, locales })` for disabled fallback entries) when it is not:
+
+     ```
+     import { publishLanguageLinks } from '@flyo/nitro-next/server';
+     publishLanguageLinks([]); // not-found / non-localized route: hide the switcher
+     ```
 
 **Render the switcher links as native `<a href={l.href}>` elements — never `next/link`'s `<Link>`.** A language switch has to refresh the shared chrome (localized nav, footer, `<html lang>`) that lives in the root layout, and App Router soft navigation re-renders only the page segment — a `<Link>` switcher leaves the header/footer/`<html lang>` stuck in the old language while only the page body updates. A plain `<a>` forces a full-document navigation and a fresh server render in the new locale. Keep the ordinary nav links in the layout as `<Link>` (soft nav is correct there, since the nav is identical within a language).
 

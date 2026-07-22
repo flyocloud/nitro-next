@@ -1,3 +1,156 @@
+# Upgrading from v2.1 to v2.2
+
+> This guide is written for both humans and AI coding agents. Steps are explicit
+> enough to follow by hand and precise enough to apply programmatically.
+
+## Overview
+
+v2.2 is **additive and fully backward compatible** — nothing is removed or
+renamed, so **no code changes are required** to keep your current behavior. If
+you don't render a language switcher, or your site is single-language, there is
+**nothing to do**.
+
+What v2.2 adds is a clean way to render a **language switcher in shared chrome** —
+a footer (or header) that lives in your **root layout** (`app/layout.tsx`).
+
+What's new:
+
+- **`readLanguageLinks()` / `publishLanguageLinks()`** (`@flyo/nitro-next/server`) —
+  a request-scoped store. The active route *publishes* its language-switcher
+  links; a component anywhere in the layout *reads* them by awaiting
+  `readLanguageLinks()`.
+- **Page and entity routes now publish automatically.** `pageResolveRoute`,
+  `nitroPageRoute`, `nitroEntityRoute`, and `nitroEntityGenerateMetadata` push the
+  resolved links into the store for you — no extra code on those routes.
+- **`createLanguageLinksStore()` / `LanguageLinksStore`** (`@flyo/nitro-next/server`) —
+  the low-level primitive behind the store. You rarely need it directly.
+
+## Why this exists
+
+The switcher's data — a page's or entity's `translation[]` — is only available
+where the content is resolved (the page route, the entity routes). But the
+switcher itself almost always lives in shared chrome in the **root layout**, and
+in the App Router the layout is an **ancestor** of the page: data flows *down*,
+so the layout **cannot receive `page.translation` as a prop**. In v2.1 there was
+no clean bridge across that gap. v2.2 adds one: routes publish, the footer reads.
+
+Because the reader **awaits** a promise, it does not matter that the root layout
+renders before the page — `await` suspends the switcher until the active route
+publishes.
+
+## What to do
+
+### If your site is single-language, or you have no switcher
+
+Nothing. v2.2 changes no behavior you rely on.
+
+### If your site is multilingual — build one switcher, read the store
+
+You write exactly one component. It reads the store and renders links; page and
+entity routes already publish, so it works on every content route with no other
+change.
+
+```tsx
+// components/LanguageSwitcher.tsx — a server component
+import { readLanguageLinks } from '@flyo/nitro-next/server';
+
+export async function LanguageSwitcher() {
+  const links = await readLanguageLinks();
+  if (links.length === 0) return null; // single-language site → no switcher
+
+  return (
+    <nav aria-label="Language">
+      {links.map((l) =>
+        l.exists ? (
+          // Native <a>, NOT next/link — a language switch must reload the shared chrome.
+          <a key={l.shortcode} href={l.href!} aria-current={l.isCurrent ? 'true' : undefined}>
+            {l.name ?? l.shortcode}
+          </a>
+        ) : (
+          <span key={l.shortcode} aria-disabled>{l.shortcode}</span>
+        ),
+      )}
+    </nav>
+  );
+}
+```
+
+Drop it into the footer in your root layout, wrapped in `<Suspense>` so the rest
+of the layout renders and streams while the switcher waits for the active route
+to publish (`fallback={null}` shows nothing until it resolves):
+
+```diff
+  // app/layout.tsx
++ import { Suspense } from 'react';
++ import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+
+  export default async function RootLayout({ children }) {
+    const config = await flyo.getNitroConfig();
+    return (
+      <html lang={config.nitro?.language}>
+        <body>
+          {/* nav … */}
+          {children}
++         <footer>
++           <Suspense fallback={null}>
++             <LanguageSwitcher />
++           </Suspense>
++         </footer>
+        </body>
+      </html>
+    );
+  }
+```
+
+### Routes that Flyo does not resolve
+
+`readLanguageLinks()` waits until *something* publishes. Page and entity routes
+do that for you, but a **hand-written route** or **`not-found.tsx`** that renders
+the same footer must publish too — otherwise the switcher waits forever.
+`publishLanguageLinks()` accepts a plain `FlyoLanguageLink[]`, so set the links by
+hand — real URLs when the route is localized, an empty array (or
+`getLanguageLinks(undefined, { currentLang, locales })` for disabled fallback
+entries) when it is not:
+
+```tsx
+// app/not-found.tsx
+import { getLanguageLinks, publishLanguageLinks } from '@flyo/nitro-next/server';
+import { flyo } from '@/flyo.config';
+
+export default async function NotFound() {
+  const currentLang = await flyo.getRequestLocale();
+  publishLanguageLinks(getLanguageLinks(undefined, { currentLang, locales: flyo.state.locales }));
+  // or, for a route with real localized URLs, publish them directly:
+  // publishLanguageLinks([
+  //   { shortcode: 'de', name: 'Deutsch', href: '/de/…', isCurrent: currentLang === 'de', exists: true },
+  //   { shortcode: 'en', name: 'English', href: '/en/…', isCurrent: currentLang === 'en', exists: true },
+  // ]);
+  return <h1>Page not found</h1>;
+}
+```
+
+## Migrating a v2.1 switcher
+
+If on v2.1 you computed `getLanguageLinks(page.translation, …)` inside the page
+and rendered the switcher there, that **still works** — nothing was removed. To
+move the switcher into shared chrome (a footer), delete the inline switcher from
+the page and add the `LanguageSwitcher` component above; the page route already
+publishes, so no data needs to be threaded through.
+
+## New API in v2.2 (all additive)
+
+| Added | Where | Description |
+|-------|-------|-------------|
+| `readLanguageLinks()` | `/server` | Await the active route's switcher links from shared chrome (footer, …). |
+| `publishLanguageLinks(links)` | `/server` | Publish links for the current request. Page/entity routes call it automatically; call it by hand on custom routes / `not-found`. |
+| `createLanguageLinksStore()` / `LanguageLinksStore` | `/server` | Low-level per-request store primitive behind the two functions above. |
+
+Behavioral additions (no API change): `pageResolveRoute`, `nitroPageRoute`,
+`nitroEntityRoute`, and `nitroEntityGenerateMetadata` now publish the resolved
+links into the store.
+
+---
+
 # Upgrading from v2.0 to v2.1
 
 ## Overview
