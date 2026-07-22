@@ -203,9 +203,21 @@ export function initNitro({
       ? firstSegment
       : (state.defaultLocale ?? undefined);
 
+    // Every `notFound()` below hands the request off to `not-found.tsx`, but this
+    // route still owns the request-scoped language-links store (see the store
+    // notes below). Publish a fallback — one disabled entry per configured
+    // locale — *before* bailing, so a switcher in shared chrome awaiting
+    // `readLanguageLinks()` resolves instead of hanging. Doing it here (and
+    // never in `not-found.tsx`) also keeps the fallback from racing a real
+    // route's links: the App Router renders the root `not-found.tsx` even on
+    // 200s, so publishing there would poison pages that *do* have translations.
+    const publishNotFoundFallback = () =>
+      publishLanguageLinks(getLanguageLinks(undefined, { currentLang: lang, locales: state.locales }));
+
     const cfg = await getNitroConfig(lang);
 
     if (!cfg.pages?.includes(path)) {
+      publishNotFoundFallback();
       notFound();
     }
 
@@ -213,10 +225,12 @@ export function initNitro({
       .page({ slug: path, lang })
       .catch((error: unknown) => {
         console.error('Error fetching page:', path, error);
+        publishNotFoundFallback();
         notFound();
       });
 
     if (!page) {
+      publishNotFoundFallback();
       notFound();
     }
 
@@ -293,7 +307,15 @@ export function initNitro({
 // suspends the footer until the links are published, regardless of render order.
 
 export interface LanguageLinksStore {
-  /** Publish the links once. Later calls are ignored (first publish wins). */
+  /**
+   * Publish the links once. Later calls are ignored (first publish wins).
+   *
+   * The active page/entity route is the single writer per request: it publishes
+   * the resolved translations on success and a fallback before any `notFound()`.
+   * "First wins" then only guards against the route's render pass and its
+   * `generateMetadata` both publishing (they publish the same links) — no other
+   * caller races it.
+   */
   publish(links: FlyoLanguageLink[]): void;
   /** A promise that resolves when the links are published. */
   read(): Promise<FlyoLanguageLink[]>;
@@ -337,11 +359,21 @@ const languageLinksStore = cache(createLanguageLinksStore);
  *
  * The Flyo route helpers call this for you: `pageResolveRoute` (and therefore
  * `nitroPageRoute`) publishes the page's links, and `nitroEntityRoute` /
- * `nitroEntityGenerateMetadata` publish the entity's. You only need to call it
- * yourself on routes that render the shared switcher **without** going through
- * those helpers — a custom page, or `not-found.tsx` — where you would otherwise
- * leave the footer waiting forever. Pass a fallback there, e.g.
- * `publishLanguageLinks(getLanguageLinks(undefined, { currentLang, locales }))`.
+ * `nitroEntityGenerateMetadata` publish the entity's. Crucially they also
+ * publish a fallback on their `notFound()` paths, so a genuine 404 that renders
+ * `not-found.tsx` still settles the store — the footer never waits forever.
+ *
+ * **Do not publish from `not-found.tsx`.** In the App Router the root not-found
+ * boundary is rendered on *every* request, not only on real 404s, and it renders
+ * synchronously — ahead of a route's `await`ed CMS fetch. With a first-wins
+ * store, a publish there would settle the store with the fallback before the
+ * real route publishes, so pages that *do* have translations would show the
+ * home/fallback links. Let the route own the publish instead.
+ *
+ * You only need to call this yourself on a **custom route Flyo does not
+ * resolve** — a hand-written page that renders the shared switcher without going
+ * through the helpers above. Publish that route's real links, or a fallback via
+ * `getLanguageLinks(undefined, { currentLang, locales })`.
  *
  * Only the first call per request takes effect.
  */
@@ -434,9 +466,29 @@ function createCachedEntityResolver<T>(
   resolver: EntityResolver<T>
 ): (props: EntityRouteParams<T>) => Promise<Entity> {
   return cache(async ({ params }: EntityRouteParams<T>) => {
-    const entity = await resolver(params);
+    // As with `pageResolveRoute`, this resolver owns the request's language-links
+    // store even when it bails. Publish a fallback before every not-found path
+    // (a missing entity, a `notFound()` from the resolver, a failed CMS fetch)
+    // so a switcher in shared chrome resolves instead of hanging — and never
+    // publish from `not-found.tsx`, which the App Router also renders on 200s.
+    const publishNotFoundFallback = async () =>
+      publishLanguageLinks(
+        getLanguageLinks(undefined, {
+          currentLang: await flyo.getRequestLocale(),
+          locales: flyo.state.locales,
+        }),
+      );
+
+    let entity: Entity;
+    try {
+      entity = await resolver(params);
+    } catch (error) {
+      await publishNotFoundFallback();
+      throw error;
+    }
 
     if (!entity) {
+      await publishNotFoundFallback();
       notFound();
     }
 

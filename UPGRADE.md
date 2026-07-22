@@ -105,29 +105,35 @@ to publish (`fallback={null}` shows nothing until it resolves):
 ### Routes that Flyo does not resolve
 
 `readLanguageLinks()` waits until *something* publishes. Page and entity routes
-do that for you, but a **hand-written route** or **`not-found.tsx`** that renders
-the same footer must publish too — otherwise the switcher waits forever.
-`publishLanguageLinks()` accepts a plain `FlyoLanguageLink[]`, so set the links by
-hand — real URLs when the route is localized, an empty array (or
-`getLanguageLinks(undefined, { currentLang, locales })` for disabled fallback
-entries) when it is not:
+do that for you — **including a fallback before every `notFound()`**, so a real
+404 that renders `not-found.tsx` still settles the store. Only a **hand-written
+route** that renders the same footer *without* going through those helpers must
+publish itself. `publishLanguageLinks()` accepts a plain `FlyoLanguageLink[]`, so
+set the links by hand:
 
 ```tsx
-// app/not-found.tsx
-import { getLanguageLinks, publishLanguageLinks } from '@flyo/nitro-next/server';
+// e.g. app/gallery/page.tsx — a hand-built page that exists in de + en
+import { publishLanguageLinks } from '@flyo/nitro-next/server';
 import { flyo } from '@/flyo.config';
 
-export default async function NotFound() {
+export default async function GalleryPage() {
   const currentLang = await flyo.getRequestLocale();
-  publishLanguageLinks(getLanguageLinks(undefined, { currentLang, locales: flyo.state.locales }));
-  // or, for a route with real localized URLs, publish them directly:
-  // publishLanguageLinks([
-  //   { shortcode: 'de', name: 'Deutsch', href: '/de/…', isCurrent: currentLang === 'de', exists: true },
-  //   { shortcode: 'en', name: 'English', href: '/en/…', isCurrent: currentLang === 'en', exists: true },
-  // ]);
-  return <h1>Page not found</h1>;
+  publishLanguageLinks([
+    { shortcode: 'de', name: 'Deutsch', href: '/de/galerie', isCurrent: currentLang === 'de', exists: true },
+    { shortcode: 'en', name: 'English', href: '/en/gallery', isCurrent: currentLang === 'en', exists: true },
+  ]);
+  return /* … */;
 }
 ```
+
+> ⚠️ **Do not publish from `not-found.tsx`.** In the App Router the root
+> not-found boundary renders on **every** request, not only on real 404s, and it
+> renders *synchronously* — ahead of a route's `await`ed CMS fetch. The store is
+> first-write-wins, so publishing there settles it with the fallback before the
+> real links arrive, and pages that *do* have translations show the home/fallback
+> links. (Earlier v2.2 drafts of this guide suggested publishing here — that was
+> the cause; remove it.) The page/entity helpers now publish the fallback for
+> you before `notFound()`, so `not-found.tsx` needs no switcher code at all.
 
 ## Migrating a v2.1 switcher
 
@@ -142,12 +148,14 @@ publishes, so no data needs to be threaded through.
 | Added | Where | Description |
 |-------|-------|-------------|
 | `readLanguageLinks()` | `/server` | Await the active route's switcher links from shared chrome (footer, …). |
-| `publishLanguageLinks(links)` | `/server` | Publish links for the current request. Page/entity routes call it automatically; call it by hand on custom routes / `not-found`. |
+| `publishLanguageLinks(links)` | `/server` | Publish links for the current request. Page/entity routes call it automatically; call it by hand only on custom routes Flyo doesn't resolve — **never from `not-found.tsx`**. |
 | `createLanguageLinksStore()` / `LanguageLinksStore` | `/server` | Low-level per-request store primitive behind the two functions above. |
 
 Behavioral additions (no API change): `pageResolveRoute`, `nitroPageRoute`,
 `nitroEntityRoute`, and `nitroEntityGenerateMetadata` now publish the resolved
-links into the store.
+links into the store — and also publish a fallback (one disabled entry per
+locale) before every `notFound()`, so a real 404 settles the store instead of
+leaving the switcher waiting.
 
 ---
 
