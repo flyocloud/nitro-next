@@ -26,5 +26,10 @@ export default defineConfig([
       proxy: 'src/proxy.ts',
     },
     clean: false,
+    // server.tsx renders the client publisher via the package's own /client
+    // subpath. Keep that import external so it resolves to dist/client (which
+    // carries the "use client" banner) instead of being inlined into the
+    // server bundle, where the directive — and the RSC boundary — would be lost.
+    external: [...shared.external, '@flyo/nitro-next/client'],
   },
 ]);

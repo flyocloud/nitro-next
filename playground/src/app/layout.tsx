@@ -1,7 +1,6 @@
 import { FlyoProvider, flyo } from "@/flyo.config";
-import { Suspense, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { Header } from './header';
-import { LanguageSwitcher } from './language-switcher';
 import { NitroDebugInfo } from "@flyo/nitro-next/server";
 
 export default async function RootLayout({
@@ -24,11 +23,9 @@ export default async function RootLayout({
             </main>
           </div>
           <footer className="container mx-auto p-4">
-            {/* Shared chrome. The switcher reads the links the active route
-                published; Suspense lets the layout stream while it waits. */}
-            <Suspense fallback={null}>
-              <LanguageSwitcher />
-            </Suspense>
+            {/* This playground is single-language — no <NitroLanguageSwitcher/>.
+                On a multilingual site it would live here; see the README's
+                "Language switcher" section. */}
           </footer>
         </body>
       </html>
