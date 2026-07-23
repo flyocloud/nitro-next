@@ -13,19 +13,31 @@ import {
   nitroEntityRoute,
   nitroEntityGenerateMetadata,
   getLanguageLinks,
-  createLanguageLinksStore,
-  publishLanguageLinks,
-  readLanguageLinks,
+  NitroLanguageSwitcher,
   type FlyoInstance,
 } from './server';
+import { useLanguageLinks, NitroLanguageSwitcherClient } from './client';
 import { headers } from 'next/headers';
+import { usePathname } from 'next/navigation';
 import { Configuration, ConfigApi, PagesApi, Page, Block, Entity } from '@flyo/nitro-typescript';
+
+// ./client (imported for the useLanguageLinks probe below) pulls in the real
+// js-bridge; keep it out of the jsdom run.
+jest.mock('@flyo/nitro-js-bridge', () => ({
+  highlightAndClick: jest.fn(),
+  wysiwyg: jest.fn(() => ''),
+  reload: jest.fn(),
+  scrollTo: jest.fn(),
+}));
 
 // Mock next/navigation
 jest.mock('next/navigation', () => ({
   notFound: jest.fn(() => {
     throw new Error('Not Found');
   }),
+  // Used by the client-side language-links publisher rendered from NitroPage /
+  // nitroEntityRoute. Tests that care about the value override it per test.
+  usePathname: jest.fn(() => '/'),
 }));
 
 // Mock next/headers (only available inside a Next.js request scope)
@@ -141,6 +153,13 @@ describe('initNitro', () => {
     const flyo = initNitro({ accessToken: 'test' });
     expect(flyo.state.defaultLocale).toBeNull();
     expect(flyo.state.locales).toEqual([]);
+  });
+
+  it('isMultilingual() is true only with more than one locale', () => {
+    expect(initNitro({ accessToken: 't' }).isMultilingual()).toBe(false);
+    expect(initNitro({ accessToken: 't', lang: 'en' }).isMultilingual()).toBe(false);
+    expect(initNitro({ accessToken: 't', defaultLocale: 'de', locales: ['de'] }).isMultilingual()).toBe(false);
+    expect(initNitro({ accessToken: 't', defaultLocale: 'de', locales: ['de', 'en'] }).isMultilingual()).toBe(true);
   });
 });
 
@@ -547,53 +566,6 @@ describe('getLanguageLinks', () => {
   });
 });
 
-describe('language-links store (createLanguageLinksStore)', () => {
-  // The public publishLanguageLinks/readLanguageLinks wrap this factory in a
-  // per-request React `cache()`. `cache` only memoizes inside a real request
-  // scope (not under jest), so the request-independent store contract is tested
-  // directly here on a single store instance.
-  const translations = [
-    { language: { shortcode: 'de', name: 'Deutsch' }, slug: 'de/x', title: 'DE', href: '/de/x' },
-    { language: { shortcode: 'en', name: 'Englisch' }, slug: 'en/x', title: 'EN', href: '/en/x' },
-  ];
-
-  it('resolves a reader that awaited BEFORE the links were published', async () => {
-    // Mirrors a footer in the root layout rendering before the page resolves.
-    const store = createLanguageLinksStore();
-    const expected = getLanguageLinks(translations, { currentLang: 'de' });
-
-    const read = store.read(); // await starts before publish
-    store.publish(expected);
-
-    await expect(read).resolves.toEqual(expected);
-  });
-
-  it('resolves a reader that awaits AFTER the links were published', async () => {
-    const store = createLanguageLinksStore();
-    const expected = getLanguageLinks(translations, { currentLang: 'en' });
-
-    store.publish(expected);
-
-    await expect(store.read()).resolves.toEqual(expected);
-  });
-
-  it('keeps the first published value (first publish wins)', async () => {
-    const store = createLanguageLinksStore();
-    const first = getLanguageLinks([translations[0]], { currentLang: 'de' });
-    const second = getLanguageLinks(translations, { currentLang: 'en' });
-
-    store.publish(first);
-    store.publish(second);
-
-    await expect(store.read()).resolves.toEqual(first);
-  });
-
-  it('exposes publishLanguageLinks / readLanguageLinks from the package', () => {
-    expect(typeof publishLanguageLinks).toBe('function');
-    expect(typeof readLanguageLinks).toBe('function');
-  });
-});
-
 describe('i18n request handling', () => {
   it('getRequestLocale falls back to defaultLocale when no header is present', async () => {
     const flyo = initNitro({ accessToken: 'test', defaultLocale: 'de', locales: ['de', 'en'] });
@@ -630,6 +602,242 @@ describe('i18n request handling', () => {
     });
     expect(path).toBe('de/about');
     expect(lang).toBe('de');
+  });
+});
+
+/**
+ * End-to-end through the language-switcher client bridge: the route helpers
+ * (server side) render `NitroLanguageLinks`, whose client publisher feeds
+ * `useLanguageLinks` — the hook a switcher in the persistent root layout uses.
+ * This is what keeps the switcher correct across soft navigations (the v2.2
+ * regression), so the probe below plays the role of that layout switcher.
+ */
+function SwitcherProbe() {
+  const links = useLanguageLinks();
+  return (
+    <nav data-testid="switcher-probe">
+      {links.map((l) => (
+        <a key={l.shortcode} href={l.href ?? undefined} aria-current={l.isCurrent || undefined}>
+          {l.shortcode}
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+const probedLinks = () =>
+  Array.from(screen.getByTestId('switcher-probe').querySelectorAll('a')).map((a) => ({
+    shortcode: a.textContent,
+    href: a.getAttribute('href'),
+    isCurrent: a.getAttribute('aria-current') === 'true',
+  }));
+
+describe('language links integration (route helpers → client bridge)', () => {
+  const translation = [
+    { language: { shortcode: 'de', name: 'Deutsch' }, href: '/de/erleben', title: 'Erleben' },
+    { language: { shortcode: 'en', name: 'English' }, href: '/en/experience', title: 'Experience' },
+  ];
+
+  // The client-side store is module-level and keyed by pathname — give every
+  // test its own pathname so state from earlier tests stays inert.
+  const setPathname = (pathname: string) =>
+    (usePathname as jest.Mock).mockReturnValue(pathname);
+
+  it('NitroPage publishes the page links with the locale derived from the slug prefix', () => {
+    setPathname('/int-1');
+    const flyo = initNitro({ accessToken: 't', defaultLocale: 'de', locales: ['de', 'en'] });
+    const page = { slug: 'en/experience', translation, json: [] } as unknown as Page;
+
+    render(
+      <>
+        <NitroPage page={page} flyo={flyo} />
+        <SwitcherProbe />
+      </>,
+    );
+
+    expect(probedLinks()).toEqual([
+      { shortcode: 'de', href: '/de/erleben', isCurrent: false },
+      { shortcode: 'en', href: '/en/experience', isCurrent: true },
+    ]);
+  });
+
+  it('NitroPage falls back to the default locale for an unprefixed slug', () => {
+    setPathname('/int-2');
+    const flyo = initNitro({ accessToken: 't', defaultLocale: 'de', locales: ['de', 'en'] });
+    const page = { slug: 'erleben', translation, json: [] } as unknown as Page;
+
+    render(
+      <>
+        <NitroPage page={page} flyo={flyo} />
+        <SwitcherProbe />
+      </>,
+    );
+
+    expect(probedLinks()).toEqual([
+      { shortcode: 'de', href: '/de/erleben', isCurrent: true },
+      { shortcode: 'en', href: '/en/experience', isCurrent: false },
+    ]);
+  });
+
+  it('NitroPage publishes a disabled entry for a locale without a translation', () => {
+    setPathname('/int-3');
+    const flyo = initNitro({ accessToken: 't', defaultLocale: 'de', locales: ['de', 'en', 'fr'] });
+    const page = { slug: 'de/erleben', translation, json: [] } as unknown as Page;
+
+    render(
+      <>
+        <NitroPage page={page} flyo={flyo} />
+        <SwitcherProbe />
+      </>,
+    );
+
+    expect(probedLinks()).toEqual([
+      { shortcode: 'de', href: '/de/erleben', isCurrent: true },
+      { shortcode: 'en', href: '/en/experience', isCurrent: false },
+      { shortcode: 'fr', href: null, isCurrent: false },
+    ]);
+  });
+
+  it('nitroEntityRoute publishes the entity links using the entity language', async () => {
+    setPathname('/int-4');
+    const flyo = initNitro({ accessToken: 't', defaultLocale: 'de', locales: ['de', 'en'] });
+    const entity = {
+      language: 'en',
+      translation,
+      entity: { entity_title: 'Experience' },
+    } as unknown as Entity;
+
+    const pageHandler = nitroEntityRoute(flyo, {
+      resolver: async () => entity,
+      render: (e: Entity) => <h1>{e.entity?.entity_title}</h1>,
+    });
+    const element = await pageHandler({ params: Promise.resolve({}) });
+
+    render(
+      <>
+        {element}
+        <SwitcherProbe />
+      </>,
+    );
+
+    // The user-rendered markup is untouched …
+    expect(screen.getByRole('heading')).toHaveTextContent('Experience');
+    // … and the entity's links reached the layout switcher.
+    expect(probedLinks()).toEqual([
+      { shortcode: 'de', href: '/de/erleben', isCurrent: false },
+      { shortcode: 'en', href: '/en/experience', isCurrent: true },
+    ]);
+  });
+
+  it('renders the switcher defaults after navigating to a route that publishes nothing', () => {
+    setPathname('/int-5/de/erleben');
+    const flyo = initNitro({ accessToken: 't', defaultLocale: 'de', locales: ['de', 'en'] });
+    const page = { slug: 'de/erleben', translation, json: [] } as unknown as Page;
+    const DEFAULTS = [
+      { shortcode: 'de', name: 'Deutsch', href: '/' },
+      { shortcode: 'en', name: 'English', href: '/en' },
+    ];
+
+    const switcherHrefs = () =>
+      Array.from(
+        screen.getByRole('navigation', { name: 'Language' }).querySelectorAll('a'),
+      ).map((a) => a.getAttribute('href'));
+
+    const { rerender } = render(
+      <>
+        <NitroPage page={page} flyo={flyo} />
+        <NitroLanguageSwitcherClient initial={[]} default={DEFAULTS} />
+      </>,
+    );
+    // On the publishing route: the route's translated hrefs.
+    expect(switcherHrefs()).toEqual(['/de/erleben', '/en/experience']);
+
+    // Soft navigation to a custom route that renders no publisher: the
+    // switcher renders the developer's default entries verbatim. ({null}
+    // keeps it in the same tree position, like the real layout, where the
+    // switcher never remounts.)
+    setPathname('/int-5/imprint');
+    rerender(
+      <>
+        {null}
+        <NitroLanguageSwitcherClient initial={[]} default={DEFAULTS} />
+      </>,
+    );
+    expect(switcherHrefs()).toEqual(['/', '/en']);
+  });
+
+  it('single-language: NitroPage renders no publisher and nothing reaches the switcher', () => {
+    setPathname('/int-sl-page');
+    // `lang` only → locales ['en'] → not multilingual. This used to publish a
+    // useless disabled "en" stub into the switcher.
+    const flyo = initNitro({ accessToken: 't', lang: 'en' });
+    const page = { slug: 'about', translation: [], json: [] } as unknown as Page;
+
+    render(
+      <>
+        <NitroPage page={page} flyo={flyo} />
+        <SwitcherProbe />
+      </>,
+    );
+
+    expect(probedLinks()).toEqual([]);
+  });
+
+  it('single-language: nitroEntityRoute renders only the user markup', async () => {
+    setPathname('/int-sl-entity');
+    const flyo = initNitro({ accessToken: 't', lang: 'en' });
+    const entity = { entity: { entity_title: 'Solo' } } as unknown as Entity;
+
+    const pageHandler = nitroEntityRoute(flyo, {
+      resolver: async () => entity,
+      render: (e: Entity) => <h1>{e.entity?.entity_title}</h1>,
+    });
+    const element = await pageHandler({ params: Promise.resolve({}) });
+
+    render(
+      <>
+        {element}
+        <SwitcherProbe />
+      </>,
+    );
+
+    expect(screen.getByRole('heading')).toHaveTextContent('Solo');
+    expect(probedLinks()).toEqual([]);
+  });
+});
+
+describe('NitroLanguageSwitcher', () => {
+  const DEFAULTS = [
+    { shortcode: 'de', name: 'Deutsch', href: '/' },
+    { shortcode: 'en', name: 'English', href: '/en' },
+  ];
+
+  it('wraps the async reader in its own Suspense and threads the switcher definition', () => {
+    const element = NitroLanguageSwitcher({ default: DEFAULTS });
+    expect(element.type).toBe(React.Suspense);
+    expect(element.props.fallback).toBeNull();
+    expect(element.props.children.props.default).toBe(DEFAULTS);
+  });
+
+  it('resolves with an empty publish (and warns) when no route ever publishes — the bridge then renders the defaults', async () => {
+    jest.useFakeTimers();
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      // `cache()` is a passthrough under jest, so the switcher's reader gets a
+      // store no one publishes to — exactly the forgotten-custom-route scenario.
+      const element = NitroLanguageSwitcher({ default: DEFAULTS });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const inner = (element as any).props.children;
+      const pending = inner.type(inner.props);
+      jest.advanceTimersByTime(5000);
+      const bridge = await pending;
+      expect(bridge.props.initial).toEqual([]);
+      expect(bridge.props.default).toBe(DEFAULTS);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('NitroLanguageSwitcher'));
+    } finally {
+      warnSpy.mockRestore();
+      jest.useRealTimers();
+    }
   });
 });
 

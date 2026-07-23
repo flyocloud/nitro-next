@@ -1,16 +1,186 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
+import { usePathname } from 'next/navigation';
 import { highlightAndClick, wysiwyg, reload, scrollTo} from '@flyo/nitro-js-bridge';
 import { Block, Entity } from "@flyo/nitro-typescript";
 import type { ImageLoaderProps } from 'next/image';
+import type { FlyoLanguageLink, FlyoSwitcherLocale } from './i18n';
 
 // Framework-agnostic language-links helper — re-exported here so client
 // components can build a language switcher from a page/entity `translation[]`
 // without importing from `/server` (which would pull server-only code into the
 // client bundle).
 export { getLanguageLinks } from './i18n';
-export type { FlyoLanguageLink } from './i18n';
+export type { FlyoLanguageLink, FlyoSwitcherLocale } from './i18n';
+
+// ─── Client-side language-links store ────────────────────────────────────────
+//
+// The server-side store (`readLanguageLinks` in `/server`) covers the *first*,
+// full-document render: the active route publishes, a switcher in the root
+// layout awaits. But App Router soft navigation (`<Link>`) re-renders only the
+// page segment — the root layout, and any switcher HTML inside it, is preserved
+// in the browser as-is. So after a soft navigation the layout's switcher would
+// keep showing the *previous* page's language links.
+//
+// This client store closes that gap. `NitroLanguageLinksPublisher` — rendered
+// automatically inside `NitroPage` and `nitroEntityRoute` — pushes the active
+// route's links whenever it mounts or receives new props, i.e. on every soft
+// navigation. `useLanguageLinks()` subscribes a switcher to those pushes.
+//
+// The module-level state is browser-only: writes happen inside effects (which
+// never run during SSR) and the SSR snapshot is a constant `null`, so server
+// renders can't leak state across requests.
+
+type PublishedLanguageLinks = { pathname: string; links: FlyoLanguageLink[] };
+
+let publishedLanguageLinks: PublishedLanguageLinks | null = null;
+const languageLinksListeners = new Set<() => void>();
+
+function subscribeLanguageLinks(listener: () => void): () => void {
+  languageLinksListeners.add(listener);
+  return () => {
+    languageLinksListeners.delete(listener);
+  };
+}
+
+const getLanguageLinksSnapshot = () => publishedLanguageLinks;
+const getLanguageLinksServerSnapshot = () => null;
+
+// `useLayoutEffect` so the publish is flushed before the browser paints the
+// newly navigated page — the switcher never visibly shows the previous route's
+// links. Falls back to `useEffect` during SSR only to silence React's
+// useLayoutEffect-on-the-server warning (neither ever runs there).
+const useClientLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
+/**
+ * Publishes the active route's language-switcher links into the client-side
+ * store, so a switcher in shared chrome (`useLanguageLinks`) updates on soft
+ * (client-side) navigations too — not only on full page loads.
+ *
+ * Renders nothing. `NitroPage` and `nitroEntityRoute` render it for you; only a
+ * custom route that bypasses both needs it, via the `NitroLanguageLinks` server
+ * component from `@flyo/nitro-next/server` (which also settles the server-side
+ * store for the initial render).
+ */
+export function NitroLanguageLinksPublisher({ links }: { links: FlyoLanguageLink[] }) {
+  const pathname = usePathname();
+  useClientLayoutEffect(() => {
+    publishedLanguageLinks = { pathname, links };
+    languageLinksListeners.forEach((notify) => notify());
+  }, [pathname, links]);
+  return null;
+}
+
+/**
+ * Subscribe a (client) language-switcher component to the active route's
+ * language links. Returns, in order of preference:
+ *
+ * 1. the links the current route published for the **current pathname** —
+ *    live-updated on every soft navigation;
+ * 2. `initial` — the server-rendered links passed down from the switcher's
+ *    server half — while still on the pathname the document was originally
+ *    rendered for (first paint / hydration);
+ * 3. `[]` when neither matches — i.e. after navigating to a route that didn't
+ *    publish (a custom route missing `NitroLanguageLinks`).
+ *
+ * @example
+ * ```tsx
+ * 'use client';
+ * import { useLanguageLinks, type FlyoLanguageLink } from '@flyo/nitro-next/client';
+ *
+ * export function LanguageSwitcherClient({ initial }: { initial: FlyoLanguageLink[] }) {
+ *   const links = useLanguageLinks(initial);
+ *   if (links.length === 0) return null;
+ *   return (
+ *     <nav aria-label="Language">
+ *       {links.map((l) =>
+ *         l.exists
+ *           ? <a key={l.shortcode} href={l.href!} aria-current={l.isCurrent || undefined}>{l.name ?? l.shortcode}</a>
+ *           : <span key={l.shortcode} aria-disabled>{l.shortcode}</span>,
+ *       )}
+ *     </nav>
+ *   );
+ * }
+ * ```
+ */
+export function useLanguageLinks(initial?: FlyoLanguageLink[]): FlyoLanguageLink[] {
+  const pathname = usePathname();
+  // The pathname this component instance first rendered on — the one the
+  // server-rendered `initial` links belong to. Captured once, never updated.
+  const [initialPathname] = useState(pathname);
+  const published = useSyncExternalStore(
+    subscribeLanguageLinks,
+    getLanguageLinksSnapshot,
+    getLanguageLinksServerSnapshot,
+  );
+
+  if (published && published.pathname === pathname) {
+    return published.links;
+  }
+  if (pathname === initialPathname) {
+    return initial ?? [];
+  }
+  return [];
+}
+
+/**
+ * Client half of `NitroLanguageSwitcher` (from `@flyo/nitro-next/server`) —
+ * that server component renders this for you; don't use it directly.
+ *
+ * Merges the developer-defined `default` entries (set, order, labels) with the
+ * active route's published links (hrefs + current locale), then renders
+ * `component` with the merged `links` — or minimal semantic default markup
+ * when no `component` is given.
+ */
+export function NitroLanguageSwitcherClient({
+  initial,
+  default: defaultLocales,
+  component: Component,
+}: {
+  initial: FlyoLanguageLink[];
+  default: FlyoSwitcherLocale[];
+  component?: React.ComponentType<{ links: FlyoLanguageLink[] }>;
+}) {
+  const published = useLanguageLinks(initial);
+
+  // The whole switcher logic: the developer's `default` defines which locales
+  // appear, in which order, and with which label. The active route's published
+  // links only contribute the translated href (and the current-locale flag) —
+  // a locale the route has no translation for links to its default href.
+  const links: FlyoLanguageLink[] = defaultLocales.map((locale) => {
+    const match = published.find((l) => l.shortcode === locale.shortcode);
+    return {
+      shortcode: locale.shortcode,
+      name: locale.name,
+      href: match?.href ?? locale.href,
+      title: match?.title,
+      isCurrent: match?.isCurrent ?? false,
+      exists: match?.href != null,
+    };
+  });
+
+  if (Component) {
+    return <Component links={links} />;
+  }
+
+  // Headless default markup: semantic, unstyled, native <a> — a language
+  // switch must be a full-document navigation so the shared chrome (nav,
+  // footer, <html lang>) re-renders in the new locale.
+  return (
+    <nav aria-label="Language">
+      <ul>
+        {links.map((l) => (
+          <li key={l.shortcode}>
+            <a href={l.href!} aria-current={l.isCurrent ? 'true' : undefined}>
+              {l.name}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
 
 const FLYO_CDN_HOST = 'storage.flyo.cloud';
 

@@ -13,6 +13,13 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "node",
+    "baseUrl": ".",
+    "paths": {
+      // server.tsx imports the client half of the language-switcher bridge via
+      // the package's own subpath (so consumers resolve it to dist/client with
+      // its "use client" directive). Map it back to the source for typechecking.
+      "@flyo/nitro-next/client": ["./src/client"]
+    },
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true

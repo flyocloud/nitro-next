@@ -1,7 +1,226 @@
-# Upgrading from v2.1 to v2.2
+# Upgrading from v2.2 to v2.3
 
 > This guide is written for both humans and AI coding agents. Steps are explicit
 > enough to follow by hand and precise enough to apply programmatically.
+
+## Overview
+
+v2.3 **fixes a bug in the v2.2 language-switcher pattern** and replaces the
+low-level store API with **one drop-in component**. If your site is
+single-language or has no switcher, there is **nothing to do**.
+
+**The bug (v2.2):** a switcher in shared chrome — `readLanguageLinks()` in a
+footer in the root layout — was only correct on **full page loads**. On **soft
+(client-side) navigation** with `<Link>`, the App Router re-renders only the
+page segment; the root layout, and the switcher HTML inside it, is preserved in
+the browser as-is. The newly active route *did* publish its links on the
+server, but the layout never re-rendered to read them. So after the first
+`<Link>` click the switcher kept showing the **previous page's** language
+links — and clicking a language sent the visitor to the wrong page.
+
+**The fix (v2.3): `NitroLanguageSwitcher`.** One component in the layout that
+handles both App Router pitfalls internally: it server-renders the correct
+links into the first, full-document response (the route helpers publish them
+into a request-scoped store), and it live-updates across soft navigations (the
+route helpers also render an invisible client publisher that feeds a
+client-side store before the browser paints).
+
+What's new:
+
+- **`NitroLanguageSwitcher`** (`@flyo/nitro-next/server`) — the complete
+  switcher for shared chrome. You define it once via the required **`default`**
+  prop: the locale set, the display **order**, and the **labels** (so you decide
+  whether/how labels are translated). The active route's published links
+  contribute only the translated **hrefs**. Renders built-in semantic markup,
+  or your own via the optional `component` prop.
+- **`flyo.isMultilingual()`** — `true` when more than one locale is configured.
+- **`NitroLanguageLinks`** (`@flyo/nitro-next/server`) — renders nothing;
+  publishes the given links on the server **and** the client. Rendered
+  automatically by `NitroPage` / `nitroEntityRoute`; only custom routes render
+  it by hand (it replaces v2.2's `publishLanguageLinks()` call).
+- **`useLanguageLinks(initial?)`** (`@flyo/nitro-next/client`) — advanced: the
+  hook behind the switcher, for fully custom client switchers (e.g. a dropdown
+  with its own state).
+
+## What to do
+
+### If your site is single-language, or you have no switcher
+
+Nothing.
+
+### Replace your v2.2 switcher with `NitroLanguageSwitcher`
+
+Delete the v2.2 `readLanguageLinks()` switcher component, and drop the built-in
+one into your root layout — the `<Suspense>` wrapper is no longer needed either
+(it's built in):
+
+```diff
+  // app/layout.tsx
+- import { Suspense } from 'react';
+- import { LanguageSwitcher } from '@/components/LanguageSwitcher';
++ import { NitroLanguageSwitcher } from '@flyo/nitro-next/server';
++ import { flyo } from '@/flyo.config';
+
+  export default async function RootLayout({ children }) {
+    // …
+    return (
+      <html lang={lang}>
+        <body>
+          {children}
+          <footer>
+-           <Suspense fallback={null}>
+-             <LanguageSwitcher />
+-           </Suspense>
++           <NitroLanguageSwitcher
++             default={[
++               { shortcode: 'de', name: 'Deutsch', href: '/' },
++               { shortcode: 'en', name: 'English', href: '/en' },
++             ]}
++           />
+          </footer>
+        </body>
+      </html>
+    );
+  }
+```
+
+`default` is the switcher definition: the array order is the display order and
+`name` is the label — always used as given. The active route's published links
+contribute only the **hrefs** (and the current-locale flag): a locale the route
+has a translation for links there; a locale it doesn't links to its default
+`href` (typically that language's home page). A route that publishes nothing at
+all renders the defaults verbatim.
+
+With no `component` prop it renders minimal semantic markup you can style with
+CSS — `nav[aria-label="Language"] > ul > li > a`, with `aria-current` on the
+active locale.
+
+### Custom markup: pass a `component`
+
+Want your own markup? Write **one client component** that receives the links as
+a plain prop — no hooks, no async, no store:
+
+```tsx
+// components/language-switcher.tsx — the ONE file you write
+'use client';
+
+import type { FlyoLanguageLink } from '@flyo/nitro-next/client';
+
+export function LanguageSwitcher({ links }: { links: FlyoLanguageLink[] }) {
+  return (
+    <nav aria-label="Language">
+      {links.map((l) => (
+        // Native <a>, NOT next/link — a language switch must reload the shared chrome.
+        <a key={l.shortcode} href={l.href!} aria-current={l.isCurrent ? 'true' : undefined}>
+          {l.name}
+        </a>
+      ))}
+    </nav>
+  );
+}
+```
+
+```tsx
+// app/layout.tsx
+<NitroLanguageSwitcher default={/* as above */} component={LanguageSwitcher} />
+```
+
+The component receives the already-merged links — your `default` order and
+labels, the route's hrefs. (`l.exists` tells you whether the href is a real
+translation or the default, if you want to style that differently.)
+
+One rule, enforced with a clear error if broken: the component must be a
+**client component** — exported from a `'use client'` file and passed by
+reference (an inline arrow function in the server layout is not serializable
+across the server/client boundary). Being a client component is also what
+makes the live updates work: the root layout never re-renders on soft
+navigation, so only a client component can update there.
+
+### Custom routes: replace the `publishLanguageLinks()` call with `<NitroLanguageLinks />`
+
+`publishLanguageLinks()` is **removed** (it only fed the server half, which is
+exactly the v2.2 bug). Render the `NitroLanguageLinks` component instead — it
+feeds both halves:
+
+```diff
+- import { publishLanguageLinks } from '@flyo/nitro-next/server';
++ import { NitroLanguageLinks } from '@flyo/nitro-next/server';
+  import { flyo } from '@/flyo.config';
+
+  export default async function GalleryPage() {
+    const currentLang = await flyo.getRequestLocale();
+-   publishLanguageLinks([
+-     { shortcode: 'de', name: 'Deutsch', href: '/de/galerie', isCurrent: currentLang === 'de', exists: true },
+-     { shortcode: 'en', name: 'English', href: '/en/gallery', isCurrent: currentLang === 'en', exists: true },
+-   ]);
+-   return /* … */;
++   return (
++     <>
++       <NitroLanguageLinks
++         links={[
++           { shortcode: 'de', name: 'Deutsch', href: '/de/galerie', isCurrent: currentLang === 'de', exists: true },
++           { shortcode: 'en', name: 'English', href: '/en/gallery', isCurrent: currentLang === 'en', exists: true },
++         ]}
++       />
++       {/* … page content … */}
++     </>
++   );
+  }
+```
+
+If a custom route publishes nothing, the switcher simply renders your `default`
+entries — after a soft navigation immediately; on a full page load after a 5 s
+safety timeout plus a console warning pointing at the fix (the timeout exists
+so a forgotten publish can never hang a request or a build).
+
+(As in v2.2: never publish from `not-found.tsx` — the route helpers already
+settle the store before every `notFound()`.)
+
+## API changes in v2.3
+
+Added:
+
+| Added | Where | Description |
+|-------|-------|-------------|
+| `NitroLanguageSwitcher` | `/server` | The complete switcher for shared chrome: SSR-correct, live across soft navigations. Required `default` prop defines locales, order and labels; optional `component` for custom markup. |
+| `NitroLanguageLinks` | `/server` | Publish links for the current route on server **and** client (renders nothing). Automatic via `NitroPage` / `nitroEntityRoute`; render by hand on custom routes. |
+| `FlyoSwitcherLocale` | `/server` + `/client` | Type of one `default` entry: `{ shortcode, name, href }`. |
+| `flyo.isMultilingual()` | instance | `true` only with more than one configured locale. |
+| `useLanguageLinks(initial?)` | `/client` | Advanced: subscribe your own client switcher to the active route's raw published links. |
+| `NitroLanguageLinksPublisher` | `/client` | Internal client publisher behind `NitroLanguageLinks`. |
+| `NitroLanguageSwitcherClient` | `/client` | Internal client half behind `NitroLanguageSwitcher`. |
+
+Removed (v2.2 had no adoption; the replacements cover every use):
+
+| Removed | Replacement |
+|---------|-------------|
+| `readLanguageLinks()` | `<NitroLanguageSwitcher />` in the layout |
+| `publishLanguageLinks(links)` | `<NitroLanguageLinks links={links} />` on custom routes |
+| `createLanguageLinksStore()` / `LanguageLinksStore` | internal |
+
+Behavioral changes:
+
+- **One degradation everywhere — your `default` entries.** A locale the route
+  has no translation for links to its default href; a route that publishes
+  nothing at all (a 404, a custom route without `NitroLanguageLinks`) renders
+  the defaults verbatim. v2.2's disabled entries and empty-switcher states are
+  gone.
+- On multilingual sites, `NitroPage` and `nitroEntityRoute` additionally render
+  the invisible client publisher (no visible markup, no layout impact).
+- The switcher's server side settles after at most 5 s (plus a console warning)
+  when nothing publishes — rendering the defaults — instead of waiting forever.
+  (In v2.2 a route that forgot to publish could hang a request — or even a
+  static build, e.g. the standalone prerender of `/_not-found`.)
+
+---
+
+# Upgrading from v2.1 to v2.2
+
+> ⚠️ **The switcher pattern introduced in v2.2 turned out to be incomplete:**
+> it goes stale after soft (client-side) navigation, because the App Router
+> never re-renders the root layout on `<Link>` navigations. **v2.3 fixes this**
+> — read this section for the concepts, then apply the
+> [v2.2 → v2.3 migration](#upgrading-from-v22-to-v23) above.
 
 ## Overview
 

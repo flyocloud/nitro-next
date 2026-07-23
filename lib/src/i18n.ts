@@ -1,6 +1,22 @@
 import type { Translation } from '@flyo/nitro-typescript';
 
 /**
+ * One entry of a `NitroLanguageSwitcher`'s required `default` prop: the
+ * developer-defined locale set. The array order is the display order, `name`
+ * is the label (the developer decides whether/how it is translated), and
+ * `href` is where the entry links when the active route has no translated
+ * URL for this locale (typically the locale's home page).
+ */
+export interface FlyoSwitcherLocale {
+  /** Locale shortcode, e.g. `"de"`. */
+  shortcode: string;
+  /** The label to display — always used as given. */
+  name: string;
+  /** Where to link when the route has no translated URL for this locale. */
+  href: string;
+}
+
+/**
  * A single language option for a language switcher, derived from a page's or
  * entity's `translation[]`. Framework-agnostic plain data — render it however
  * you like.
@@ -35,11 +51,10 @@ export interface FlyoLanguageLink {
  *
  * This is a pure *data* helper — it maps a `translation[]` to switcher links and
  * renders nothing. **The Flyo route helpers already call it for you and publish
- * the result**, so page and entity routes need no switcher code at all; the
- * footer just reads the store (see `publishLanguageLinks` / `readLanguageLinks`
- * in `@flyo/nitro-next/server`). Call this directly only when you publish links
- * by hand from a raw `translation[]` — e.g. on a custom route Flyo doesn't
- * resolve:
+ * the result**, so page and entity routes need no switcher code at all; shared
+ * chrome renders `NitroLanguageSwitcher` (see `@flyo/nitro-next/server`). Call
+ * this directly only when you build links by hand from a raw `translation[]` —
+ * e.g. for `NitroLanguageLinks` on a custom route Flyo doesn't resolve:
  *
  * ```tsx
  * getLanguageLinks(translations, { currentLang, locales });
