@@ -81,10 +81,12 @@ export function FlyoProvider({ children }: { children: ReactNode }) {
 ```
 
 `FlyoClientWrapper` drives the live preview through `@flyo/nitro-js-bridge`, which is resolved
-from your project's installed version at runtime — keep it up to date (`>= 1.4.0`). That version
-announces the preview connection to the Flyo editor; with an older bridge the editor reports
-"no connection to the live preview" even when the preview renders correctly, and click-to-edit
-only reaches an editor running on `https://flyo.cloud`.
+from your project's installed version at runtime — keep it up to date (`>= 1.5.0`). Since `1.4.0`
+the bridge announces the preview connection to the Flyo editor; with an older bridge the editor
+reports "no connection to the live preview" even when the preview renders correctly, and
+click-to-edit only reaches an editor running on `https://flyo.cloud`. `1.5.0` shares a single
+highlight ring and edit button across all registered blocks, so nested blocks no longer fight
+over the hover — the innermost block wins.
 
 The `flyo` instance provides:
 - `flyo.getNitroConfig(lang?)` — Fetch the CMS configuration (localized to the request locale when `lang` is omitted)
