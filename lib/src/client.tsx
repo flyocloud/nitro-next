@@ -185,9 +185,86 @@ export function NitroLanguageSwitcherClient({
 const FLYO_CDN_HOST = 'storage.flyo.cloud';
 
 /**
- * Check if running in production environment
+ * The deployment environment of the current build.
+ *
+ * `'preview'` covers every non-live deployment a hosting platform builds in
+ * production mode: pull-request previews, branch/staging deploys, etc.
  */
-export const isProd = process.env.NODE_ENV === 'production';
+export type FlyoEnv = 'production' | 'preview' | 'development';
+
+/**
+ * Normalise a platform's environment marker to a {@link FlyoEnv}.
+ *
+ * Returns `undefined` for empty or unrecognised values so the next marker in
+ * the resolution chain gets its turn.
+ */
+function toFlyoEnv(value: string | undefined): FlyoEnv | undefined {
+  switch (value) {
+    case 'production':
+    case 'prod':
+      return 'production';
+    case 'preview':
+    case 'staging':
+    case 'deploy-preview': // Netlify: pull-request deploy
+    case 'branch-deploy': // Netlify: non-production branch deploy
+      return 'preview';
+    case 'development':
+    case 'dev': // Netlify: `netlify dev`
+    case 'test':
+      return 'development';
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * The resolved deployment environment.
+ *
+ * `NODE_ENV` on its own can't answer "is this the live site?": every hosting
+ * platform builds preview and branch deployments with `NODE_ENV=production`,
+ * so on Vercel a pull-request preview looks exactly like production. That's why
+ * the platform's own environment marker is consulted first, in this order:
+ *
+ * 1. `NEXT_PUBLIC_FLYO_ENV` — explicit override, wins over everything.
+ * 2. `NEXT_PUBLIC_VERCEL_ENV` — Vercel, exposed automatically for Next.js
+ *    projects (`production` | `preview` | `development`).
+ * 3. `NEXT_PUBLIC_CONTEXT` — Netlify's `CONTEXT`; set
+ *    `NEXT_PUBLIC_CONTEXT=$CONTEXT` in the build command to opt in.
+ * 4. `NEXT_PUBLIC_ENV` — the generic convention other platforms are wired to.
+ * 5. `NODE_ENV` — the previous behaviour, kept as the last resort.
+ *
+ * Only `NEXT_PUBLIC_*` variables are read (plus `NODE_ENV`, which Next.js
+ * treats the same way): they are inlined at build time, so a client component
+ * resolves the identical value on the server and in the browser and can't
+ * produce a hydration mismatch. Unprefixed markers like `VERCEL_ENV` exist only
+ * on the server and would do exactly that.
+ *
+ * Note that these are inlined statically — reading them through a variable key
+ * (`process.env[name]`) would compile to `undefined` in the browser bundle,
+ * hence the spelled-out reads below.
+ */
+export const flyoEnv: FlyoEnv =
+  toFlyoEnv(process.env.NEXT_PUBLIC_FLYO_ENV) ??
+  toFlyoEnv(process.env.NEXT_PUBLIC_VERCEL_ENV) ??
+  toFlyoEnv(process.env.NEXT_PUBLIC_CONTEXT) ??
+  toFlyoEnv(process.env.NEXT_PUBLIC_ENV) ??
+  toFlyoEnv(process.env.NODE_ENV) ??
+  'development';
+
+/**
+ * Check if running on the live production deployment.
+ *
+ * True only when {@link flyoEnv} resolves to `'production'`, so preview and
+ * branch deployments — which also build with `NODE_ENV=production` — are
+ * excluded.
+ */
+export const isProd = flyoEnv === 'production';
+
+/**
+ * Check if running on a preview/staging deployment (pull-request preview,
+ * branch deploy, …) rather than the live site or a local dev server.
+ */
+export const isPreview = flyoEnv === 'preview';
 
 /**
  * Type for WYSIWYG node structure
@@ -410,7 +487,8 @@ export function FlyoCdnLoader({ src, width }: ImageLoaderProps): string {
  * FlyoMetric component for tracking entity metrics in production
  * 
  * Automatically sends a metric tracking request to the Flyo API when:
- * - The environment is production (NODE_ENV === 'production')
+ * - The deployment is the live production one (see {@link isProd}) — preview
+ *   and branch deployments are skipped so they don't pollute the statistics
  * - The entity has a metric API URL configured
  * 
  * @param entity - The entity object containing entity_metric.api

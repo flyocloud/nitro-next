@@ -872,6 +872,74 @@ SITE_URL=https://yourdomain.com
 
 Next.js will automatically serve the sitemap at `/sitemap.xml`.
 
+### 14. Environment Detection
+
+`NODE_ENV` cannot tell you whether a deployment is *the live site*. Every hosting
+platform builds preview, branch and staging deployments in production mode, so on
+Vercel `process.env.NODE_ENV === 'production'` is `true` for a pull-request preview
+exactly as it is for your domain. Anything gated on it — `FlyoMetric` tracking,
+analytics, third-party pixels — would fire from previews too.
+
+`flyoEnv` resolves the real deployment environment, and `isProd` / `isPreview` are
+the convenient booleans on top of it:
+
+```tsx
+'use client';
+import { isProd, isPreview, flyoEnv } from '@flyo/nitro-next/client';
+
+export function Analytics() {
+  if (!isProd) {
+    return isPreview ? <span>preview build ({flyoEnv})</span> : null;
+  }
+  return <script src="https://example.com/analytics.js" async />;
+}
+```
+
+The environment is resolved from the first marker that is set:
+
+| # | Variable | Set by |
+|---|----------|--------|
+| 1 | `NEXT_PUBLIC_FLYO_ENV` | you — explicit override, wins over everything |
+| 2 | `NEXT_PUBLIC_VERCEL_ENV` | **Vercel**, automatically (`production` \| `preview` \| `development`) |
+| 3 | `NEXT_PUBLIC_CONTEXT` | **Netlify**, opt-in: `NEXT_PUBLIC_CONTEXT=$CONTEXT next build` |
+| 4 | `NEXT_PUBLIC_ENV` | the generic convention used by other platforms |
+| 5 | `NODE_ENV` | Next.js — the last-resort fallback |
+
+Recognised values per environment (anything else is ignored, so the next marker
+gets its turn):
+
+- **production** – `production`, `prod`
+- **preview** – `preview`, `staging`, `deploy-preview`, `branch-deploy`
+- **development** – `development`, `dev`, `test`
+
+On Vercel this works out of the box: nothing to configure, previews stop counting
+as production. On platforms that only expose an unprefixed marker, map it to a
+public one in your build command (Netlify example above) or in `next.config.ts`:
+
+```ts
+// next.config.ts — Cloudflare Pages / Workers
+const nextConfig = {
+  env: {
+    NEXT_PUBLIC_FLYO_ENV:
+      process.env.CF_PAGES_BRANCH === 'main' ? 'production' : 'preview',
+  },
+};
+export default nextConfig;
+```
+
+Only `NEXT_PUBLIC_*` variables (plus `NODE_ENV`) are read, because those are the
+ones Next.js inlines at build time: a client component then resolves the same
+value during SSR and in the browser and cannot produce a hydration mismatch.
+Server-only markers such as `VERCEL_ENV` would.
+
+To force a specific environment — e.g. to see metrics from a staging deployment —
+set the override:
+
+```bash
+# .env.staging
+NEXT_PUBLIC_FLYO_ENV=production
+```
+
 ## API Reference
 
 ### Client Exports
@@ -892,7 +960,7 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
   ```tsx
   import { FlyoCdnLoader } from '@flyo/nitro-next/client';
   ```
-- **`FlyoMetric`** – Component for tracking entity metrics in production. Automatically sends a metric tracking request to the Flyo API when in production environment and the entity has a metric API URL configured.
+- **`FlyoMetric`** – Component for tracking entity metrics in production. Automatically sends a metric tracking request to the Flyo API when the deployment is the live production one (see [Environment Detection](#14-environment-detection) — preview deployments are skipped) and the entity has a metric API URL configured.
   ```tsx
   import { FlyoMetric } from '@flyo/nitro-next/client';
   ```
@@ -900,9 +968,9 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
   ```tsx
   import { EditableSection } from '@flyo/nitro-next/client';
   ```
-- **`isProd`** – Constant that checks if the current environment is production (`process.env.NODE_ENV === 'production'`).
+- **`isProd`** / **`isPreview`** / **`flyoEnv`** – Deployment-environment detection that understands hosting platforms, not just `NODE_ENV`. `flyoEnv` is `'production' | 'preview' | 'development'`; `isProd` is `flyoEnv === 'production'` and `isPreview` is `flyoEnv === 'preview'`. See [Environment Detection](#14-environment-detection).
   ```tsx
-  import { isProd } from '@flyo/nitro-next/client';
+  import { isProd, isPreview, flyoEnv } from '@flyo/nitro-next/client';
   ```
 - **`useLanguageLinks(initial?)`** – Advanced: hook that subscribes your own client language-switcher component to the active route's `FlyoLanguageLink[]` (what `NitroLanguageSwitcher` uses internally). Returns `initial` on first paint, the freshly published links after every soft navigation, and `[]` on a route that published nothing. Reach for it when the built-in switcher's `component` prop isn't enough — e.g. a stateful dropdown. See [Multilanguage → Language switcher](#12-multilanguage-i18n).
   ```tsx
