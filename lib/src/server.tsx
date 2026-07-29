@@ -141,7 +141,7 @@ function deriveLangFromPath(path: string | undefined, state: NitroState): string
  *   accessToken: process.env.FLYO_ACCESS_TOKEN || '',
  *   lang: 'en',
  *   baseUrl: process.env.SITE_URL || 'http://localhost:3000',
- *   liveEdit: process.env.FLYO_LIVE_EDIT === 'true',
+ *   liveEdit: process.env.NEXT_PUBLIC_FLYO_LIVE_EDIT === 'true',
  *   components: { HeroBanner, Text },
  * });
  * ```

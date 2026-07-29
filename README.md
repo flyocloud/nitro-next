@@ -54,7 +54,9 @@ import { HeroBanner } from './components/HeroBanner';
 import { Text } from './components/Text';
 
 const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
-const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
+// Public on purpose: live editing is not a secret, and only NEXT_PUBLIC_*
+// variables reach the browser — see 14. Environment Detection.
+const liveEdit = process.env.NEXT_PUBLIC_FLYO_LIVE_EDIT === 'true';
 const baseUrl = process.env.SITE_URL || 'http://localhost:3000';
 
 // Create the Flyo instance — import this wherever you need CMS access
@@ -892,49 +894,66 @@ export function Analytics() {
 }
 ```
 
-It is resolved from the first marker that gives a clear answer:
+It is resolved from the first signal that gives a clear answer:
 
 | # | Variable | Set by |
 |---|----------|--------|
-| 1 | `NEXT_PUBLIC_FLYO_ENV` | you — explicit override, wins over everything |
+| 1 | `NEXT_PUBLIC_FLYO_LIVE_EDIT` / `FLYO_LIVE_EDIT` | you — `true` means an editor deployment, never production |
 | 2 | `NEXT_PUBLIC_VERCEL_ENV` | **Vercel**, automatically (`production` \| `preview` \| `development`) |
 | 3 | `NEXT_PUBLIC_CONTEXT` | **Netlify**, opt-in: `NEXT_PUBLIC_CONTEXT=$CONTEXT next build` |
 | 4 | `NEXT_PUBLIC_ENV` | the generic convention used by other platforms |
 | 5 | `NODE_ENV` | Next.js — the last-resort fallback |
 
-`production` and `prod` mean production. `preview`, `staging`, `deploy-preview`,
-`branch-deploy`, `development`, `dev` and `test` mean it isn't. **Anything else —
-unset, empty, or a value from a platform this doesn't know — is ignored, so the
-next marker decides and the `NODE_ENV` fallback keeps the previous behaviour.**
-Only a marker that clearly names a non-production deployment turns `isProd` off.
+For the markers, `production` and `prod` mean production, while `preview`,
+`staging`, `deploy-preview`, `branch-deploy`, `development`, `dev` and `test` mean
+it isn't. **Anything else — unset, empty, or a value from a platform this doesn't
+know — is ignored, so the next marker decides and the `NODE_ENV` fallback keeps
+the previous behaviour.** Only live editing or a marker that clearly names a
+non-production deployment turns `isProd` off.
 
-On Vercel this works out of the box: nothing to configure, previews stop counting
-as production. On platforms that only expose an unprefixed marker, map it to a
-public one in your build command (Netlify example above) or in `next.config.ts`:
+#### Live editing
+
+A deployment with live editing enabled serves the Flyo editor, so it is not the
+live site and `isProd` is `false` there.
+
+**Set the public variant** — `NEXT_PUBLIC_FLYO_LIVE_EDIT=true` next to your
+existing `FLYO_LIVE_EDIT=true`, or use it as the single source in
+`flyo.config.tsx`:
+
+```bash
+# .env.local
+FLYO_LIVE_EDIT=true
+NEXT_PUBLIC_FLYO_LIVE_EDIT=true
+```
+
+Only `NEXT_PUBLIC_*` variables are inlined into the browser bundle. `isProd` does
+read the plain `FLYO_LIVE_EDIT` too, but that value exists only while
+server-rendering — code that runs in the browser, including `FlyoMetric`'s
+tracking request, cannot see it. Without the public variant an editor session on
+a production-marked deployment would still be counted.
+
+#### Other platforms
+
+On Vercel the platform side works out of the box: nothing to configure, previews
+stop counting as production. On platforms that only expose an unprefixed marker,
+map it to a public one in your build command (Netlify example above) or in
+`next.config.ts`:
 
 ```ts
 // next.config.ts — Cloudflare Pages / Workers
 const nextConfig = {
   env: {
-    NEXT_PUBLIC_FLYO_ENV:
+    NEXT_PUBLIC_ENV:
       process.env.CF_PAGES_BRANCH === 'main' ? 'production' : 'preview',
   },
 };
 export default nextConfig;
 ```
 
-Only `NEXT_PUBLIC_*` variables (plus `NODE_ENV`) are read, because those are the
-ones Next.js inlines at build time: a client component then resolves the same
-value during SSR and in the browser and cannot produce a hydration mismatch.
-Server-only markers such as `VERCEL_ENV` would.
-
-Use the override to force the outcome — e.g. to get metrics from a staging
-deployment, or to keep them off a production one:
-
-```bash
-# .env.staging
-NEXT_PUBLIC_FLYO_ENV=production
-```
+Reading public variables is what keeps this safe: they are inlined at build time,
+so a client component resolves the same value during SSR and in the browser and
+cannot produce a hydration mismatch. Server-only markers such as `VERCEL_ENV`
+would.
 
 ## API Reference
 
@@ -964,7 +983,7 @@ NEXT_PUBLIC_FLYO_ENV=production
   ```tsx
   import { EditableSection } from '@flyo/nitro-next/client';
   ```
-- **`isProd`** – Constant that checks whether this is the live production deployment. Reads the hosting platform's environment marker first (`NEXT_PUBLIC_VERCEL_ENV` on Vercel, …) so preview and branch deployments — which also build with `NODE_ENV=production` — don't count as production, and falls back to `NODE_ENV === 'production'` when no marker gives a clear answer. See [Environment Detection](#14-environment-detection).
+- **`isProd`** – Constant that checks whether this is the live production deployment. `false` when live editing is enabled, and otherwise resolved from the hosting platform's environment marker (`NEXT_PUBLIC_VERCEL_ENV` on Vercel, …) so preview and branch deployments — which also build with `NODE_ENV=production` — don't count as production. Falls back to `NODE_ENV === 'production'` when no signal gives a clear answer. See [Environment Detection](#14-environment-detection).
   ```tsx
   import { isProd } from '@flyo/nitro-next/client';
   ```

@@ -16,7 +16,8 @@ jest.mock('next/navigation', () => ({
 }));
 
 const ENV_KEYS = [
-  'NEXT_PUBLIC_FLYO_ENV',
+  'FLYO_LIVE_EDIT',
+  'NEXT_PUBLIC_FLYO_LIVE_EDIT',
   'NEXT_PUBLIC_VERCEL_ENV',
   'NEXT_PUBLIC_CONTEXT',
   'NEXT_PUBLIC_ENV',
@@ -87,32 +88,49 @@ describe('isProd', () => {
     expect(loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_ENV: 'prod' }).isProd).toBe(true);
   });
 
-  it('lets NEXT_PUBLIC_FLYO_ENV override the platform marker', () => {
-    // Opting a preview deployment into production behaviour…
-    expect(
-      loadClient({
-        NODE_ENV: 'production',
-        NEXT_PUBLIC_VERCEL_ENV: 'preview',
-        NEXT_PUBLIC_FLYO_ENV: 'production',
-      }).isProd,
-    ).toBe(true);
-
-    // …and out of it.
+  it('is false when live editing is on, whatever the platform says', () => {
     expect(
       loadClient({
         NODE_ENV: 'production',
         NEXT_PUBLIC_VERCEL_ENV: 'production',
-        NEXT_PUBLIC_FLYO_ENV: 'staging',
+        FLYO_LIVE_EDIT: 'true',
       }).isProd,
     ).toBe(false);
+
+    // The public flag is the one that survives into the browser bundle.
+    expect(
+      loadClient({
+        NODE_ENV: 'production',
+        NEXT_PUBLIC_VERCEL_ENV: 'production',
+        NEXT_PUBLIC_FLYO_LIVE_EDIT: 'true',
+      }).isProd,
+    ).toBe(false);
+  });
+
+  it('ignores a live-edit flag that is off or not exactly "true"', () => {
+    expect(
+      loadClient({
+        NODE_ENV: 'production',
+        NEXT_PUBLIC_VERCEL_ENV: 'production',
+        FLYO_LIVE_EDIT: 'false',
+      }).isProd,
+    ).toBe(true);
+
+    expect(
+      loadClient({
+        NODE_ENV: 'production',
+        NEXT_PUBLIC_VERCEL_ENV: 'production',
+        NEXT_PUBLIC_FLYO_LIVE_EDIT: '1',
+      }).isProd,
+    ).toBe(true);
   });
 
   it('stays true when a marker is empty or unknown — only a clear non-production value turns it off', () => {
     expect(
       loadClient({
         NODE_ENV: 'production',
-        NEXT_PUBLIC_FLYO_ENV: '',
-        NEXT_PUBLIC_VERCEL_ENV: 'production',
+        NEXT_PUBLIC_VERCEL_ENV: '',
+        NEXT_PUBLIC_ENV: 'production',
       }).isProd,
     ).toBe(true);
 
@@ -158,6 +176,18 @@ describe('FlyoMetric', () => {
     const { FlyoMetric } = loadClient({
       NODE_ENV: 'production',
       NEXT_PUBLIC_VERCEL_ENV: 'preview',
+    });
+
+    render(<FlyoMetric entity={metricEntity} />);
+
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('does not track an editor session — live edit on a production deployment', () => {
+    const { FlyoMetric } = loadClient({
+      NODE_ENV: 'production',
+      NEXT_PUBLIC_VERCEL_ENV: 'production',
+      NEXT_PUBLIC_FLYO_LIVE_EDIT: 'true',
     });
 
     render(<FlyoMetric entity={metricEntity} />);

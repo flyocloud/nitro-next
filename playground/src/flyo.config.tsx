@@ -13,7 +13,7 @@ import { Text } from './components/Text';
 
 // Get configuration from environment variables
 const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
-const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
+const liveEdit = process.env.NEXT_PUBLIC_FLYO_LIVE_EDIT === 'true';
 const baseUrl = process.env.SITE_URL || 'http://localhost:3000';
 
 export const flyo = initNitro({

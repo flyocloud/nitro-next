@@ -209,14 +209,27 @@ function toIsProd(value: string | undefined): boolean | undefined {
 }
 
 /**
+ * Live editing is never the live site: a deployment that serves the Flyo editor
+ * bridge exists for editors, so it must not count as production.
+ *
+ * `FLYO_LIVE_EDIT` is the flag `flyo.config.tsx` already uses. It is not public,
+ * so it is only readable while server-rendering — for browser code (effects,
+ * event handlers) set `NEXT_PUBLIC_FLYO_LIVE_EDIT` too, since only that one is
+ * inlined into the client bundle.
+ */
+const liveEdit =
+  process.env.NEXT_PUBLIC_FLYO_LIVE_EDIT === 'true' || process.env.FLYO_LIVE_EDIT === 'true';
+
+/**
  * Check if running on the live production deployment.
  *
  * `NODE_ENV` on its own can't answer this: every hosting platform builds
  * preview, branch and staging deployments with `NODE_ENV=production`, so on
- * Vercel a pull-request preview looks exactly like the live site. That's why the
- * platform's own environment marker is consulted first, in this order:
+ * Vercel a pull-request preview looks exactly like the live site. Live editing
+ * and the platform's own environment marker are therefore consulted first:
  *
- * 1. `NEXT_PUBLIC_FLYO_ENV` — explicit override, wins over everything.
+ * 1. `FLYO_LIVE_EDIT` / `NEXT_PUBLIC_FLYO_LIVE_EDIT` — live editing on means
+ *    this is not production, whatever the platform says.
  * 2. `NEXT_PUBLIC_VERCEL_ENV` — Vercel, exposed automatically for Next.js
  *    projects (`production` | `preview` | `development`).
  * 3. `NEXT_PUBLIC_CONTEXT` — Netlify's `CONTEXT`; set
@@ -224,26 +237,26 @@ function toIsProd(value: string | undefined): boolean | undefined {
  * 4. `NEXT_PUBLIC_ENV` — the generic convention other platforms are wired to.
  * 5. `NODE_ENV` — the previous behaviour, kept as the last resort.
  *
- * Only a marker that clearly names a non-production deployment turns this off.
- * Unset or unrecognised values fall through to the next marker, so a platform
- * this doesn't know about behaves exactly as it did before.
+ * Only live editing or a marker that clearly names a non-production deployment
+ * turns this off. Unset or unrecognised values fall through to the next marker,
+ * so a platform this doesn't know about behaves exactly as it did before.
  *
- * Only `NEXT_PUBLIC_*` variables are read (plus `NODE_ENV`, which Next.js
- * treats the same way): they are inlined at build time, so a client component
- * resolves the identical value on the server and in the browser and can't
- * produce a hydration mismatch. Unprefixed markers like `VERCEL_ENV` exist only
- * on the server and would do exactly that.
+ * Beyond `FLYO_LIVE_EDIT` only `NEXT_PUBLIC_*` variables are read (plus
+ * `NODE_ENV`, which Next.js treats the same way): they are inlined at build
+ * time, so a client component resolves the identical value on the server and in
+ * the browser and can't produce a hydration mismatch. Unprefixed markers like
+ * `VERCEL_ENV` exist only on the server and would do exactly that.
  *
  * Note that these are inlined statically — reading them through a variable key
  * (`process.env[name]`) would compile to `undefined` in the browser bundle,
  * hence the spelled-out reads below.
  */
 export const isProd =
-  toIsProd(process.env.NEXT_PUBLIC_FLYO_ENV) ??
-  toIsProd(process.env.NEXT_PUBLIC_VERCEL_ENV) ??
-  toIsProd(process.env.NEXT_PUBLIC_CONTEXT) ??
-  toIsProd(process.env.NEXT_PUBLIC_ENV) ??
-  process.env.NODE_ENV === 'production';
+  !liveEdit &&
+  (toIsProd(process.env.NEXT_PUBLIC_VERCEL_ENV) ??
+    toIsProd(process.env.NEXT_PUBLIC_CONTEXT) ??
+    toIsProd(process.env.NEXT_PUBLIC_ENV) ??
+    process.env.NODE_ENV === 'production');
 
 /**
  * Type for WYSIWYG node structure
@@ -469,6 +482,10 @@ export function FlyoCdnLoader({ src, width }: ImageLoaderProps): string {
  * - The deployment is the live production one (see {@link isProd}) — preview
  *   and branch deployments are skipped so they don't pollute the statistics
  * - The entity has a metric API URL configured
+ *
+ * The request is fired from an effect, i.e. in the browser, so the live-edit
+ * exemption needs the public flag: set `NEXT_PUBLIC_FLYO_LIVE_EDIT=true`
+ * alongside `FLYO_LIVE_EDIT=true` to keep editor sessions out of the metrics.
  * 
  * @param entity - The entity object containing entity_metric.api
  * 
