@@ -24,9 +24,9 @@ const ENV_KEYS = [
 ] as const;
 
 /**
- * `flyoEnv` / `isProd` are module-level constants resolved at import time —
- * exactly how they behave once a bundler has inlined the variables. So each
- * case sets the environment first and then re-imports the module.
+ * `isProd` is a module-level constant resolved at import time — exactly how it
+ * behaves once a bundler has inlined the variables. So each case sets the
+ * environment first and then re-imports the module.
  */
 function loadClient(env: Partial<Record<(typeof ENV_KEYS)[number], string>>) {
   for (const key of ENV_KEYS) {
@@ -43,7 +43,7 @@ function loadClient(env: Partial<Record<(typeof ENV_KEYS)[number], string>>) {
   return mod as typeof import('./client');
 }
 
-describe('flyoEnv / isProd / isPreview', () => {
+describe('isProd', () => {
   const originalEnv = { ...process.env };
 
   afterEach(() => {
@@ -52,59 +52,39 @@ describe('flyoEnv / isProd / isPreview', () => {
 
   it('trusts the Vercel marker over NODE_ENV — a preview build is not production', () => {
     // The actual bug: Vercel builds previews with NODE_ENV=production.
-    const { flyoEnv, isProd, isPreview } = loadClient({
-      NODE_ENV: 'production',
-      NEXT_PUBLIC_VERCEL_ENV: 'preview',
-    });
-
-    expect(flyoEnv).toBe('preview');
-    expect(isProd).toBe(false);
-    expect(isPreview).toBe(true);
+    expect(
+      loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_VERCEL_ENV: 'preview' }).isProd,
+    ).toBe(false);
   });
 
-  it('resolves production on a Vercel production deployment', () => {
-    const { flyoEnv, isProd, isPreview } = loadClient({
-      NODE_ENV: 'production',
-      NEXT_PUBLIC_VERCEL_ENV: 'production',
-    });
-
-    expect(flyoEnv).toBe('production');
-    expect(isProd).toBe(true);
-    expect(isPreview).toBe(false);
+  it('is true on a Vercel production deployment', () => {
+    expect(
+      loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_VERCEL_ENV: 'production' }).isProd,
+    ).toBe(true);
   });
 
-  it('resolves development on a Vercel development build', () => {
-    const { flyoEnv, isProd } = loadClient({
-      NODE_ENV: 'development',
-      NEXT_PUBLIC_VERCEL_ENV: 'development',
-    });
-
-    expect(flyoEnv).toBe('development');
-    expect(isProd).toBe(false);
+  it('is false on a Vercel development build', () => {
+    expect(
+      loadClient({ NODE_ENV: 'development', NEXT_PUBLIC_VERCEL_ENV: 'development' }).isProd,
+    ).toBe(false);
   });
 
-  it('maps the Netlify contexts', () => {
-    expect(loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_CONTEXT: 'production' }).flyoEnv).toBe(
-      'production',
+  it('reads the Netlify contexts', () => {
+    expect(loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_CONTEXT: 'production' }).isProd).toBe(
+      true,
     );
     expect(
-      loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_CONTEXT: 'deploy-preview' }).flyoEnv,
-    ).toBe('preview');
+      loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_CONTEXT: 'deploy-preview' }).isProd,
+    ).toBe(false);
     expect(
-      loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_CONTEXT: 'branch-deploy' }).flyoEnv,
-    ).toBe('preview');
-    expect(loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_CONTEXT: 'dev' }).flyoEnv).toBe(
-      'development',
-    );
+      loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_CONTEXT: 'branch-deploy' }).isProd,
+    ).toBe(false);
+    expect(loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_CONTEXT: 'dev' }).isProd).toBe(false);
   });
 
   it('supports the generic NEXT_PUBLIC_ENV convention, including staging', () => {
-    expect(loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_ENV: 'staging' }).flyoEnv).toBe(
-      'preview',
-    );
-    expect(loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_ENV: 'prod' }).flyoEnv).toBe(
-      'production',
-    );
+    expect(loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_ENV: 'staging' }).isProd).toBe(false);
+    expect(loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_ENV: 'prod' }).isProd).toBe(true);
   });
 
   it('lets NEXT_PUBLIC_FLYO_ENV override the platform marker', () => {
@@ -122,12 +102,12 @@ describe('flyoEnv / isProd / isPreview', () => {
       loadClient({
         NODE_ENV: 'production',
         NEXT_PUBLIC_VERCEL_ENV: 'production',
-        NEXT_PUBLIC_FLYO_ENV: 'preview',
+        NEXT_PUBLIC_FLYO_ENV: 'staging',
       }).isProd,
     ).toBe(false);
   });
 
-  it('ignores empty and unknown values so the next marker wins', () => {
+  it('stays true when a marker is empty or unknown — only a clear non-production value turns it off', () => {
     expect(
       loadClient({
         NODE_ENV: 'production',
@@ -137,18 +117,14 @@ describe('flyoEnv / isProd / isPreview', () => {
     ).toBe(true);
 
     expect(
-      loadClient({
-        NODE_ENV: 'production',
-        NEXT_PUBLIC_VERCEL_ENV: 'something-else',
-      }).isProd,
+      loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_VERCEL_ENV: 'something-else' }).isProd,
     ).toBe(true);
   });
 
   it('falls back to NODE_ENV when no platform marker is present', () => {
-    expect(loadClient({ NODE_ENV: 'production' }).flyoEnv).toBe('production');
-    expect(loadClient({ NODE_ENV: 'development' }).flyoEnv).toBe('development');
-    expect(loadClient({ NODE_ENV: 'test' }).flyoEnv).toBe('development');
-    expect(loadClient({}).flyoEnv).toBe('development');
+    expect(loadClient({ NODE_ENV: 'production' }).isProd).toBe(true);
+    expect(loadClient({ NODE_ENV: 'development' }).isProd).toBe(false);
+    expect(loadClient({}).isProd).toBe(false);
   });
 });
 

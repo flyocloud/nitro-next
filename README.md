@@ -880,22 +880,19 @@ Vercel `process.env.NODE_ENV === 'production'` is `true` for a pull-request prev
 exactly as it is for your domain. Anything gated on it — `FlyoMetric` tracking,
 analytics, third-party pixels — would fire from previews too.
 
-`flyoEnv` resolves the real deployment environment, and `isProd` / `isPreview` are
-the convenient booleans on top of it:
+`isProd` therefore asks the hosting platform, not just `NODE_ENV`:
 
 ```tsx
 'use client';
-import { isProd, isPreview, flyoEnv } from '@flyo/nitro-next/client';
+import { isProd } from '@flyo/nitro-next/client';
 
 export function Analytics() {
-  if (!isProd) {
-    return isPreview ? <span>preview build ({flyoEnv})</span> : null;
-  }
+  if (!isProd) return null;
   return <script src="https://example.com/analytics.js" async />;
 }
 ```
 
-The environment is resolved from the first marker that is set:
+It is resolved from the first marker that gives a clear answer:
 
 | # | Variable | Set by |
 |---|----------|--------|
@@ -905,12 +902,11 @@ The environment is resolved from the first marker that is set:
 | 4 | `NEXT_PUBLIC_ENV` | the generic convention used by other platforms |
 | 5 | `NODE_ENV` | Next.js — the last-resort fallback |
 
-Recognised values per environment (anything else is ignored, so the next marker
-gets its turn):
-
-- **production** – `production`, `prod`
-- **preview** – `preview`, `staging`, `deploy-preview`, `branch-deploy`
-- **development** – `development`, `dev`, `test`
+`production` and `prod` mean production. `preview`, `staging`, `deploy-preview`,
+`branch-deploy`, `development`, `dev` and `test` mean it isn't. **Anything else —
+unset, empty, or a value from a platform this doesn't know — is ignored, so the
+next marker decides and the `NODE_ENV` fallback keeps the previous behaviour.**
+Only a marker that clearly names a non-production deployment turns `isProd` off.
 
 On Vercel this works out of the box: nothing to configure, previews stop counting
 as production. On platforms that only expose an unprefixed marker, map it to a
@@ -932,8 +928,8 @@ ones Next.js inlines at build time: a client component then resolves the same
 value during SSR and in the browser and cannot produce a hydration mismatch.
 Server-only markers such as `VERCEL_ENV` would.
 
-To force a specific environment — e.g. to see metrics from a staging deployment —
-set the override:
+Use the override to force the outcome — e.g. to get metrics from a staging
+deployment, or to keep them off a production one:
 
 ```bash
 # .env.staging
@@ -968,9 +964,9 @@ NEXT_PUBLIC_FLYO_ENV=production
   ```tsx
   import { EditableSection } from '@flyo/nitro-next/client';
   ```
-- **`isProd`** / **`isPreview`** / **`flyoEnv`** – Deployment-environment detection that understands hosting platforms, not just `NODE_ENV`. `flyoEnv` is `'production' | 'preview' | 'development'`; `isProd` is `flyoEnv === 'production'` and `isPreview` is `flyoEnv === 'preview'`. See [Environment Detection](#14-environment-detection).
+- **`isProd`** – Constant that checks whether this is the live production deployment. Reads the hosting platform's environment marker first (`NEXT_PUBLIC_VERCEL_ENV` on Vercel, …) so preview and branch deployments — which also build with `NODE_ENV=production` — don't count as production, and falls back to `NODE_ENV === 'production'` when no marker gives a clear answer. See [Environment Detection](#14-environment-detection).
   ```tsx
-  import { isProd, isPreview, flyoEnv } from '@flyo/nitro-next/client';
+  import { isProd } from '@flyo/nitro-next/client';
   ```
 - **`useLanguageLinks(initial?)`** – Advanced: hook that subscribes your own client language-switcher component to the active route's `FlyoLanguageLink[]` (what `NitroLanguageSwitcher` uses internally). Returns `initial` on first paint, the freshly published links after every soft navigation, and `[]` on a route that published nothing. Reach for it when the built-in switcher's `component` prop isn't enough — e.g. a stateful dropdown. See [Multilanguage → Language switcher](#12-multilanguage-i18n).
   ```tsx

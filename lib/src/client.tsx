@@ -185,45 +185,36 @@ export function NitroLanguageSwitcherClient({
 const FLYO_CDN_HOST = 'storage.flyo.cloud';
 
 /**
- * The deployment environment of the current build.
+ * Read a hosting platform's environment marker as "is this the live site?".
  *
- * `'preview'` covers every non-live deployment a hosting platform builds in
- * production mode: pull-request previews, branch/staging deploys, etc.
+ * Returns `undefined` for empty or unrecognised values — not sure — so the next
+ * marker in the resolution chain gets its turn.
  */
-export type FlyoEnv = 'production' | 'preview' | 'development';
-
-/**
- * Normalise a platform's environment marker to a {@link FlyoEnv}.
- *
- * Returns `undefined` for empty or unrecognised values so the next marker in
- * the resolution chain gets its turn.
- */
-function toFlyoEnv(value: string | undefined): FlyoEnv | undefined {
+function toIsProd(value: string | undefined): boolean | undefined {
   switch (value) {
     case 'production':
     case 'prod':
-      return 'production';
+      return true;
     case 'preview':
     case 'staging':
     case 'deploy-preview': // Netlify: pull-request deploy
     case 'branch-deploy': // Netlify: non-production branch deploy
-      return 'preview';
     case 'development':
     case 'dev': // Netlify: `netlify dev`
     case 'test':
-      return 'development';
+      return false;
     default:
       return undefined;
   }
 }
 
 /**
- * The resolved deployment environment.
+ * Check if running on the live production deployment.
  *
- * `NODE_ENV` on its own can't answer "is this the live site?": every hosting
- * platform builds preview and branch deployments with `NODE_ENV=production`,
- * so on Vercel a pull-request preview looks exactly like production. That's why
- * the platform's own environment marker is consulted first, in this order:
+ * `NODE_ENV` on its own can't answer this: every hosting platform builds
+ * preview, branch and staging deployments with `NODE_ENV=production`, so on
+ * Vercel a pull-request preview looks exactly like the live site. That's why the
+ * platform's own environment marker is consulted first, in this order:
  *
  * 1. `NEXT_PUBLIC_FLYO_ENV` — explicit override, wins over everything.
  * 2. `NEXT_PUBLIC_VERCEL_ENV` — Vercel, exposed automatically for Next.js
@@ -232,6 +223,10 @@ function toFlyoEnv(value: string | undefined): FlyoEnv | undefined {
  *    `NEXT_PUBLIC_CONTEXT=$CONTEXT` in the build command to opt in.
  * 4. `NEXT_PUBLIC_ENV` — the generic convention other platforms are wired to.
  * 5. `NODE_ENV` — the previous behaviour, kept as the last resort.
+ *
+ * Only a marker that clearly names a non-production deployment turns this off.
+ * Unset or unrecognised values fall through to the next marker, so a platform
+ * this doesn't know about behaves exactly as it did before.
  *
  * Only `NEXT_PUBLIC_*` variables are read (plus `NODE_ENV`, which Next.js
  * treats the same way): they are inlined at build time, so a client component
@@ -243,28 +238,12 @@ function toFlyoEnv(value: string | undefined): FlyoEnv | undefined {
  * (`process.env[name]`) would compile to `undefined` in the browser bundle,
  * hence the spelled-out reads below.
  */
-export const flyoEnv: FlyoEnv =
-  toFlyoEnv(process.env.NEXT_PUBLIC_FLYO_ENV) ??
-  toFlyoEnv(process.env.NEXT_PUBLIC_VERCEL_ENV) ??
-  toFlyoEnv(process.env.NEXT_PUBLIC_CONTEXT) ??
-  toFlyoEnv(process.env.NEXT_PUBLIC_ENV) ??
-  toFlyoEnv(process.env.NODE_ENV) ??
-  'development';
-
-/**
- * Check if running on the live production deployment.
- *
- * True only when {@link flyoEnv} resolves to `'production'`, so preview and
- * branch deployments — which also build with `NODE_ENV=production` — are
- * excluded.
- */
-export const isProd = flyoEnv === 'production';
-
-/**
- * Check if running on a preview/staging deployment (pull-request preview,
- * branch deploy, …) rather than the live site or a local dev server.
- */
-export const isPreview = flyoEnv === 'preview';
+export const isProd =
+  toIsProd(process.env.NEXT_PUBLIC_FLYO_ENV) ??
+  toIsProd(process.env.NEXT_PUBLIC_VERCEL_ENV) ??
+  toIsProd(process.env.NEXT_PUBLIC_CONTEXT) ??
+  toIsProd(process.env.NEXT_PUBLIC_ENV) ??
+  process.env.NODE_ENV === 'production';
 
 /**
  * Type for WYSIWYG node structure
