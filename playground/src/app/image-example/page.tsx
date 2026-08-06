@@ -30,15 +30,15 @@ export default async function ImageExamplePage() {
 
       <h2 style={{ marginTop: '3rem' }}>Cropped variants (focal point aware)</h2>
       <p>
-        <code>FlyoCdnLoader</code> requests <code>{'{width}xnull'}</code>, a ratio-preserving
-        resize — the CDN never crops, so the asset&apos;s focal point is not applied and the
-        browser centre-crops instead. <code>FlyoCdnLoaderCrop</code> requests a fixed
-        <code> {'{width}x{height}'}</code>, which makes the CDN crop for real and honour the focal
-        point.
+        <code>FlyoCdnLoader</code> requests <code>?w={'{width}'}</code>, a ratio-preserving
+        resize — the height stays dynamic, so the CDN never crops, the asset&apos;s focal point
+        is not applied and the browser centre-crops instead. <code>FlyoCdnLoaderCrop</code>{' '}
+        requests a fixed <code>?w={'{width}'}&amp;h={'{height}'}</code>, which makes the CDN crop
+        for real and honour the focal point.
       </p>
 
       <div style={{ marginTop: '2rem' }}>
-        <h3>Square crop — requests /thumb/700x700</h3>
+        <h3>Square crop — requests ?w=700&amp;h=700</h3>
         <Image
           loader={FlyoCdnLoaderCrop({ aspectRatio: 1 })}
           src="https://storage.flyo.cloud/lowe_a8173f2a.jpg"
@@ -52,7 +52,7 @@ export default async function ImageExamplePage() {
       <div style={{ marginTop: '2rem' }}>
         <h3>
           16:9 crop with maxWidth — the source is 1200px wide, so srcset candidates are
-          capped at /thumb/1200x675 instead of asking for a width the CDN would answer with
+          capped at ?w=1200&amp;h=675 instead of asking for a width the CDN would answer with
           the uncropped original
         </h3>
         <Image

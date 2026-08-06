@@ -602,6 +602,22 @@ function buildLanguageAlternates(
 }
 
 /**
+ * Build a social-preview image URL in the Flyo CDN query format
+ * (`?w=…&h=…&format=jpg`), the successor of the deprecated `/thumb/{w}x{h}`
+ * path segment. Both `w` and `h` are set, so the CDN crops and applies the
+ * asset's focal point.
+ */
+function buildSocialImageUrl(image: string, width: number, height: number): string | undefined {
+  if (!image) {
+    return undefined;
+  }
+
+  // The image URL may already carry a query string.
+  const separator = image.includes('?') ? '&' : '?';
+  return `${image}${separator}w=${width}&h=${height}&format=jpg`;
+}
+
+/**
  * Internal helper to wrap and cache entity resolvers.
  *
  * Also publishes the entity's language-switcher links into the request-scoped
@@ -893,8 +909,8 @@ export function nitroPageGenerateMetadata(flyo: FlyoInstance) {
     const description = meta?.description ?? '';
     const image = meta?.image ?? '';
 
-    const ogImage = image ? `${image}/thumb/1200x630?format=jpg` : undefined;
-    const twImage = image ? `${image}/thumb/1200x600?format=jpg` : undefined;
+    const ogImage = buildSocialImageUrl(image, 1200, 630);
+    const twImage = buildSocialImageUrl(image, 1200, 600);
 
     const alternates = buildLanguageAlternates(page.translation, lang);
 
@@ -1025,8 +1041,8 @@ export function nitroEntityGenerateMetadata<T = any>(
     const description = entity.entity?.entity_teaser ?? '';
     const image = entity.entity?.entity_image ?? '';
 
-    const ogImage = image ? `${image}/thumb/1200x630?format=jpg` : undefined;
-    const twImage = image ? `${image}/thumb/1200x600?format=jpg` : undefined;
+    const ogImage = buildSocialImageUrl(image, 1200, 630);
+    const twImage = buildSocialImageUrl(image, 1200, 600);
 
     const alternates = buildLanguageAlternates(entity.translation, entity.language);
 

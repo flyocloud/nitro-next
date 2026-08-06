@@ -428,9 +428,11 @@ The loader automatically:
 - Applies width-based transformations
 - Converts images to WebP format for optimal performance
 
+It emits the current Flyo CDN URL format, e.g. `…/me.png?w=800&format=webp`. The legacy `/thumb/{width}x{height}` path segment is no longer produced — see [Flyo CDN URL format](#flyo-cdn-url-format) below.
+
 #### Focal point / cropped images with `FlyoCdnLoaderCrop`
 
-`FlyoCdnLoader` requests `{width}xnull`, a ratio-preserving resize — the CDN never crops, it only scales. Flyo applies an asset's **focal point only on crops with a fixed aspect ratio** (`250x250` uses the focus, `250xnull` does not, see the [Flyo asset docs](https://docs.flyo.cloud/doc/assets-images)). So with the plain loader the cropping happens in the browser (`object-fit: cover`), always from the centre, and the focal point is ignored.
+`FlyoCdnLoader` requests `?w={width}`, a ratio-preserving resize — the height is left dynamic, so the CDN never crops, it only scales. Flyo applies an asset's **focal point only when both `w` and `h` are set** (`?w=250&h=250` uses the focus, `?w=250` does not, see the [Flyo asset docs](https://docs.flyo.cloud/doc/assets-images)). So with the plain loader the cropping happens in the browser (`object-fit: cover`), always from the centre, and the focal point is ignored.
 
 This cannot be fixed with `<Image>` props: Next.js only passes `{ src, width, quality }` to a loader — the `height` prop never reaches it. Use `FlyoCdnLoaderCrop` instead, which takes the aspect ratio once and derives the height for every width in the generated `srcset`:
 
@@ -451,17 +453,17 @@ export default function Avatar({ block }) {
 }
 ```
 
-This requests `…/thumb/700x700?format=webp`, so the CDN performs a real crop and honours the focal point.
+This requests `…?w=700&h=700&format=webp`, so the CDN performs a real crop and honours the focal point.
 
 **Options**
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `aspectRatio` | – | Target ratio as `width / height` (`1`, `16 / 9`, `4 / 3`, …). Omitted → same ratio-preserving `{width}xnull` behaviour as `FlyoCdnLoader`. |
+| `aspectRatio` | – | Target ratio as `width / height` (`1`, `16 / 9`, `4 / 3`, …). Omitted → `h` is left off, i.e. the same ratio-preserving `?w={width}` behaviour as `FlyoCdnLoader`. |
 | `format` | `'webp'` | Output format passed to the CDN. |
 | `maxWidth` | – | Optional upper bound for the requested width. Unset → the width is passed through and the CDN applies its own limits. |
 
-**Why `maxWidth` exists:** when a thumb request is wider than the stored asset, the CDN returns the *uncropped original* — e.g. `…/thumb/1400x1400` on a 679×498 source returns 679×498, no crop, focal point ignored. Since `next/image` generates `srcset` candidates well beyond the rendered size, a large candidate can quietly lose the crop while the small ones keep it. When the Flyo media field gives you the original dimensions, pass them so every candidate stays croppable:
+**Why `maxWidth` exists:** when a resize request is wider than the stored asset, the CDN returns the *uncropped original* — e.g. `…?w=1400&h=1400` on a 679×498 source returns 679×498, no crop, focal point ignored. Since `next/image` generates `srcset` candidates well beyond the rendered size, a large candidate can quietly lose the crop while the small ones keep it. When the Flyo media field gives you the original dimensions, pass them so every candidate stays croppable:
 
 ```tsx
 <Image
@@ -472,6 +474,42 @@ This requests `…/thumb/700x700?format=webp`, so the CDN performs a real crop a
   height={900}
 />
 ```
+
+#### Flyo CDN URL format
+
+Both loaders emit the query-parameter format that Flyo's image CDN
+(`storage.flyo.cloud`) documents as of **06.08.2026**:
+
+| URL | Result |
+| --- | --- |
+| `{file}` | original image |
+| `{file}?w=300&h=300` | fixed size (crop, focal point applied) |
+| `{file}?w=300` | height dynamic (aspect ratio preserved) |
+| `{file}?h=300` | width dynamic |
+| `{file}?w=300&h=300&format=webp` | convert format (`webp`, `jpg`, `jpeg`, `png`, `gif`) |
+| `{file}?w=300&h=300&download=1` | deliver as a download |
+
+Rules worth knowing when you build such URLs by hand:
+
+- `w` / `h` are positive integers. `0`, an empty value and the literal `null`
+  are rejected with an **HTTP 400** — a dynamic side is expressed by **omitting**
+  the parameter, not by passing `null`.
+- Values above `2560` are capped at `2560` by the CDN.
+- `format` without `w` / `h` is ignored; the unmodified original is returned.
+- The focal point only applies when **both** `w` and `h` are set.
+
+**Migration from the old path format.** The `/thumb/{w}x{h}` segment is
+deprecated but keeps working until at least **06.08.2028**; `/filter/{w}x{h}`
+and any other `{file}/{word}/{w}x{h}` variant were **removed on 06.08.2026** and
+now return **HTTP 404**. If you build CDN URLs yourself anywhere in your project,
+rewrite them:
+
+| Old | New |
+| --- | --- |
+| `/thumb/{w}x{h}` | `?w={w}&h={h}` |
+| `/thumb/{w}xnull` | `?w={w}` |
+| `/thumb/nullx{h}` | `?h={h}` |
+| `/filter/{w}x{h}` | `?w={w}&h={h}` (the old form is gone — 404) |
 
 ### 10. Nested Blocks (Slots)
 
