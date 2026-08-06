@@ -482,14 +482,12 @@ export interface FlyoCdnLoaderCropOptions {
  * />
  * ```
  *
- * @example Hoist the loader so it isn't re-created on every render
+ * @example With `maxWidth` set to the asset's own width
  * ```tsx
- * const heroLoader = FlyoCdnLoaderCrop({ aspectRatio: 16 / 9 });
- *
  * export function Hero({ block }) {
  *   return (
  *     <Image
- *       loader={heroLoader}
+ *       loader={FlyoCdnLoaderCrop({ aspectRatio: 16 / 9, maxWidth: block.content.image.width })}
  *       src={block.content.image.source}
  *       alt={block.content.image.caption}
  *       width={1600}

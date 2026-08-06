@@ -392,7 +392,6 @@ Use the Flyo CDN loader with Next.js Image:
 ```
 'use client';
 
-import { useMemo } from 'react';
 import Image, { type ImageProps } from 'next/image';
 import { FlyoCdnLoader, FlyoCdnLoaderCrop } from '@flyo/nitro-next/client';
 
@@ -404,12 +403,12 @@ type FlyoImageProps = Omit<ImageProps, 'loader'> & {
 };
 
 export function FlyoImage({ aspectRatio, maxWidth, ...props }: FlyoImageProps) {
-  const loader = useMemo(
-    () => (aspectRatio ? FlyoCdnLoaderCrop({ aspectRatio, maxWidth }) : FlyoCdnLoader),
-    [aspectRatio, maxWidth]
+  return (
+    <Image
+      loader={aspectRatio ? FlyoCdnLoaderCrop({ aspectRatio, maxWidth }) : FlyoCdnLoader}
+      {...props}
+    />
   );
-
-  return <Image loader={loader} {...props} />;
 }
 ```
 Use this component for Flyo media fields where width and height are known or can be safely provided.

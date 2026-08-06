@@ -53,15 +53,12 @@ as they are; they describe the layout, the loader now describes the crop:
 ```diff
 - import { FlyoCdnLoader } from '@flyo/nitro-next/client';
 + import { FlyoCdnLoaderCrop } from '@flyo/nitro-next/client';
-+
-+ // Module scope: create the loader once, not on every render.
-+ const squareLoader = FlyoCdnLoaderCrop({ aspectRatio: 1 });
 
   export function Avatar({ block }) {
     return (
       <Image
 -       loader={FlyoCdnLoader}
-+       loader={squareLoader}
++       loader={FlyoCdnLoaderCrop({ aspectRatio: 1 })}
         src={block.content.image.source}
         alt={block.content.image.caption}
         width={700}
@@ -77,15 +74,13 @@ as they are; they describe the layout, the loader now describes the crop:
 generated `srcset`, so the request becomes `…/thumb/700x700?format=webp` — a
 real crop, focal point applied.
 
-**Two rules when applying this:**
+Call the factory inline. It is only invoked while `<Image>` renders, to build a
+URL string; the same options produce the same `src` / `srcSet`, so there is
+nothing to hoist into a `const` or a `useMemo`.
 
-1. **Create the loader outside `render`** — at module scope, or via `useMemo`.
-   `FlyoCdnLoaderCrop({...})` returns a *new function* on each call, and a new
-   `loader` identity on every render defeats React's reconciliation of the
-   `<Image>`.
-2. **Match `aspectRatio` to the CSS**, not to the asset. If the frame is
-   `aspect-video`, pass `16 / 9`. A mismatch means the browser crops the
-   already-cropped image a second time.
+**One rule when applying this: match `aspectRatio` to the CSS, not to the
+asset.** If the frame is `aspect-video`, pass `16 / 9`. A mismatch means the
+browser crops the already-cropped image a second time.
 
 ### Pass `maxWidth` when the source width is known
 
@@ -96,10 +91,13 @@ size, so the crop can survive at small widths and vanish at large ones. If the
 Flyo media field exposes the original dimensions, pass them:
 
 ```tsx
-const loader = FlyoCdnLoaderCrop({
-  aspectRatio: 16 / 9,
-  maxWidth: block.content.image.width,
-});
+<Image
+  loader={FlyoCdnLoaderCrop({ aspectRatio: 16 / 9, maxWidth: block.content.image.width })}
+  src={block.content.image.source}
+  alt={block.content.image.caption}
+  width={1600}
+  height={900}
+/>
 ```
 
 Without `maxWidth` the requested width is passed through untouched and the CDN
@@ -114,7 +112,6 @@ Projects generated from `ai-instructions-nextjs.md` usually have a
 ```tsx
 'use client';
 
-import { useMemo } from 'react';
 import Image, { type ImageProps } from 'next/image';
 import { FlyoCdnLoader, FlyoCdnLoaderCrop } from '@flyo/nitro-next/client';
 
@@ -124,12 +121,12 @@ type FlyoImageProps = Omit<ImageProps, 'loader'> & {
 };
 
 export function FlyoImage({ aspectRatio, maxWidth, ...props }: FlyoImageProps) {
-  const loader = useMemo(
-    () => (aspectRatio ? FlyoCdnLoaderCrop({ aspectRatio, maxWidth }) : FlyoCdnLoader),
-    [aspectRatio, maxWidth]
+  return (
+    <Image
+      loader={aspectRatio ? FlyoCdnLoaderCrop({ aspectRatio, maxWidth }) : FlyoCdnLoader}
+      {...props}
+    />
   );
-
-  return <Image loader={loader} {...props} />;
 }
 ```
 

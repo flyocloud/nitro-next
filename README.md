@@ -438,13 +438,10 @@ This cannot be fixed with `<Image>` props: Next.js only passes `{ src, width, qu
 import Image from 'next/image';
 import { FlyoCdnLoaderCrop } from '@flyo/nitro-next/client';
 
-// Hoist the loader so it isn't re-created on every render
-const squareLoader = FlyoCdnLoaderCrop({ aspectRatio: 1 });
-
 export default function Avatar({ block }) {
   return (
     <Image
-      loader={squareLoader}
+      loader={FlyoCdnLoaderCrop({ aspectRatio: 1 })}
       src={block.content.image.source}
       alt={block.content.image.caption}
       width={700}
@@ -944,7 +941,7 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
   ```tsx
   import { FlyoCdnLoaderCrop } from '@flyo/nitro-next/client';
 
-  const loader = FlyoCdnLoaderCrop({ aspectRatio: 1 });
+  <Image loader={FlyoCdnLoaderCrop({ aspectRatio: 1 })} … />
   ```
 - **`FlyoMetric`** – Component for tracking entity metrics in production. Automatically sends a metric tracking request to the Flyo API when in production environment and the entity has a metric API URL configured.
   ```tsx
