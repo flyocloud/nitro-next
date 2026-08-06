@@ -374,13 +374,33 @@ export function FlyoWysiwyg({
 }
 
 /**
+ * Prefixes `src` with the Flyo CDN host unless it already points at it.
+ */
+function toFlyoCdnUrl(src: string): string {
+  if (src.includes(FLYO_CDN_HOST)) {
+    return src;
+  }
+
+  // Remove leading slash if present to avoid double slashes
+  const cleanSrc = src.startsWith('/') ? src.slice(1) : src;
+  return `https://${FLYO_CDN_HOST}/${cleanSrc}`;
+}
+
+/**
  * Image loader for Flyo CDN that automatically handles image transformations.
  * Adds Flyo CDN host if not already present and applies width transformations.
- * 
+ *
+ * Emits `{width}xnull`, i.e. a ratio-preserving resize: the image keeps its
+ * original aspect ratio and is never cropped by the CDN. Because Flyo only
+ * applies the asset's focal point on crops with a fixed aspect ratio
+ * (`250x250` uses the focus, `250xnull` does not), this loader cannot honour
+ * the focal point. Use {@link FlyoCdnLoaderCrop} when the image is rendered in
+ * a fixed aspect ratio and the focal point matters.
+ *
  * @param src - The image source URL (relative or absolute)
  * @param width - The desired width for the image
  * @returns Transformed image URL with Flyo CDN parameters
- * 
+ *
  * @example
  * ```tsx
  * <Image
@@ -393,17 +413,115 @@ export function FlyoWysiwyg({
  * ```
  */
 export function FlyoCdnLoader({ src, width }: ImageLoaderProps): string {
-  let imageUrl = src;
+  // Append Flyo CDN transformation parameters
+  return `${toFlyoCdnUrl(src)}/thumb/${width}xnull?format=webp`;
+}
 
-  // If src doesn't contain the Flyo CDN host, prefix it
-  if (!src.includes(FLYO_CDN_HOST)) {
-    // Remove leading slash if present to avoid double slashes
-    const cleanSrc = src.startsWith('/') ? src.slice(1) : src;
-    imageUrl = `https://${FLYO_CDN_HOST}/${cleanSrc}`;
+/**
+ * Options for {@link FlyoCdnLoaderCrop}.
+ */
+export interface FlyoCdnLoaderCropOptions {
+  /**
+   * Target aspect ratio as `width / height` (e.g. `1` for a square, `16 / 9`
+   * for widescreen, `4 / 3`). The loader derives the height from the width
+   * next/image requests, so the CDN performs a real crop and applies the
+   * asset's focal point.
+   *
+   * Omit it to fall back to the ratio-preserving `{width}xnull` behaviour of
+   * {@link FlyoCdnLoader} (focal point not applied).
+   */
+  aspectRatio?: number;
+  /**
+   * Output format passed to the CDN. Defaults to `'webp'`.
+   */
+  format?: string;
+  /**
+   * Optional upper bound for the requested width, in pixels.
+   *
+   * The CDN returns the *uncropped original* whenever a thumb request exceeds
+   * the stored source, so an oversized srcset candidate silently loses the crop
+   * — and with it the focal point. Pass the asset's own width here when you
+   * know it (Flyo media fields expose the original dimensions) to keep every
+   * candidate croppable.
+   *
+   * Unset by default: the library does not assume any storage limit, the CDN
+   * applies its own.
+   */
+  maxWidth?: number;
+}
+
+/**
+ * Creates a Flyo CDN image loader that requests a real crop instead of a
+ * ratio-preserving resize.
+ *
+ * next/image never passes `height` to a loader — its signature is
+ * `({ src, width, quality })` — so no combination of `<Image>` props can make
+ * the CDN return a cropped image. This factory closes that gap: you declare the
+ * aspect ratio once at the call site and the loader computes the height for
+ * every width in the generated srcset.
+ *
+ * This matters for focal points: Flyo only applies an asset's focus on crops
+ * with a fixed aspect ratio. `400x400` honours the focus, `400xnull` does not
+ * and the browser ends up centre-cropping via `object-cover` instead.
+ *
+ * Note that the CDN returns the untouched original — uncropped, focus ignored —
+ * for any request wider than the stored asset. Pass `maxWidth` when the source
+ * width is known to keep large srcset candidates croppable.
+ *
+ * @param options - Crop options, see {@link FlyoCdnLoaderCropOptions}
+ * @returns A loader function for the next/image `loader` prop
+ *
+ * @example
+ * ```tsx
+ * <Image
+ *   loader={FlyoCdnLoaderCrop({ aspectRatio: 1 })}
+ *   src="me.png"
+ *   alt="Picture"
+ *   width={700}
+ *   height={700}
+ * />
+ * ```
+ *
+ * @example With `maxWidth` set to the asset's own width
+ * ```tsx
+ * export function Hero({ block }) {
+ *   return (
+ *     <Image
+ *       loader={FlyoCdnLoaderCrop({ aspectRatio: 16 / 9, maxWidth: block.content.image.width })}
+ *       src={block.content.image.source}
+ *       alt={block.content.image.caption}
+ *       width={1600}
+ *       height={900}
+ *     />
+ *   );
+ * }
+ * ```
+ */
+export function FlyoCdnLoaderCrop(
+  options: FlyoCdnLoaderCropOptions = {}
+): (props: ImageLoaderProps) => string {
+  const { aspectRatio, format = 'webp', maxWidth } = options;
+
+  if (aspectRatio !== undefined && (!Number.isFinite(aspectRatio) || aspectRatio <= 0)) {
+    throw new Error(
+      `FlyoCdnLoaderCrop: "aspectRatio" must be a positive, finite number (width / height), received ${aspectRatio}.`
+    );
   }
 
-  // Append Flyo CDN transformation parameters
-  return `${imageUrl}/thumb/${width}xnull?format=webp`;
+  if (maxWidth !== undefined && (!Number.isFinite(maxWidth) || maxWidth < 1)) {
+    throw new Error(
+      `FlyoCdnLoaderCrop: "maxWidth" must be a finite number of at least 1, received ${maxWidth}.`
+    );
+  }
+
+  return ({ src, width }: ImageLoaderProps): string => {
+    // Optional guard: above the stored source the CDN returns the original,
+    // uncropped image and the focal point is lost.
+    const requestedWidth = maxWidth === undefined ? width : Math.min(width, maxWidth);
+    const height = aspectRatio ? Math.max(1, Math.round(requestedWidth / aspectRatio)) : 'null';
+
+    return `${toFlyoCdnUrl(src)}/thumb/${requestedWidth}x${height}?format=${format}`;
+  };
 }
 
 /**

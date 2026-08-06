@@ -393,12 +393,22 @@ Use the Flyo CDN loader with Next.js Image:
 'use client';
 
 import Image, { type ImageProps } from 'next/image';
-import { FlyoCdnLoader } from '@flyo/nitro-next/client';
+import { FlyoCdnLoader, FlyoCdnLoaderCrop } from '@flyo/nitro-next/client';
 
-type FlyoImageProps = Omit<ImageProps, 'loader'>;
+type FlyoImageProps = Omit<ImageProps, 'loader'> & {
+  /** Crop to a fixed ratio (width / height) so the Flyo focal point is applied. */
+  aspectRatio?: number;
+  /** Original asset width, when known — keeps large srcset candidates croppable. */
+  maxWidth?: number;
+};
 
-export function FlyoImage(props: FlyoImageProps) {
-  return <Image loader={FlyoCdnLoader} {...props} />;
+export function FlyoImage({ aspectRatio, maxWidth, ...props }: FlyoImageProps) {
+  return (
+    <Image
+      loader={aspectRatio ? FlyoCdnLoaderCrop({ aspectRatio, maxWidth }) : FlyoCdnLoader}
+      {...props}
+    />
+  );
 }
 ```
 Use this component for Flyo media fields where width and height are known or can be safely provided.
@@ -411,6 +421,18 @@ Example usage inside a future block component:
   alt={block.content.image.caption || ''}
   width={800}
   height={600}
+/>
+```
+
+Pass `aspectRatio` whenever the image is rendered in a fixed frame (`object-cover`, square avatars, 16:9 heroes). `FlyoCdnLoader` requests `{width}xnull`, which is a ratio-preserving resize — Flyo only applies an asset's focal point on crops with a fixed aspect ratio, so without `aspectRatio` the browser centre-crops and the focal point is lost. Next.js never passes `height` to a loader, so the ratio has to be declared at the call site:
+
+```
+<FlyoImage
+  src={block.content.image.source}
+  alt={block.content.image.caption || ''}
+  aspectRatio={16 / 9}
+  width={1600}
+  height={900}
 />
 ```
 

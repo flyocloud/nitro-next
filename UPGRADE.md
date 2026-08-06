@@ -1,7 +1,167 @@
-# Upgrading from v2.2 to v2.3
+# Upgrading from v2.3 to v2.4
 
 > This guide is written for both humans and AI coding agents. Steps are explicit
 > enough to follow by hand and precise enough to apply programmatically.
+
+## Overview
+
+v2.4 is **purely additive**. `FlyoCdnLoader` is unchanged and keeps working
+exactly as before — nothing breaks, and doing nothing is a valid upgrade.
+
+What's new: **`FlyoCdnLoaderCrop`**, a second image loader for images that are
+displayed in a **fixed aspect ratio**. It exists because the existing loader
+cannot honour an asset's **focal point**.
+
+**Why the focal point was being ignored.** `FlyoCdnLoader` requests
+`…/thumb/{width}xnull`, a ratio-preserving resize. Flyo applies an asset's focus
+**only on crops with a fixed aspect ratio** — `250x250` uses the focus,
+`250xnull` does not ([Flyo asset
+docs](https://docs.flyo.cloud/doc/assets-images)). So every image ended up
+scaled by the CDN and then cropped **by the browser** through
+`object-fit: cover`, which always crops from the centre. Whatever focal point
+an editor set in the content hub had no effect.
+
+This could not be fixed from the call site. Next.js passes only
+`{ src, width, quality }` to an image loader — the `height` prop never reaches
+it — so no combination of `<Image>` props can make the CDN return a crop. The
+aspect ratio has to be given to the loader itself, which is what the new factory
+does.
+
+## What to do
+
+### If no image is displayed in a fixed aspect ratio
+
+Nothing. Keep using `FlyoCdnLoader`.
+
+### Switch fixed-ratio images to `FlyoCdnLoaderCrop`
+
+**Where to look** — an image is a candidate whenever its rendered box has a
+fixed ratio and the image is made to fill it. Typical signals in a client
+project:
+
+- `object-cover` / `object-fit: cover` on an `<Image>` (Tailwind: `object-cover`,
+  often together with `aspect-square`, `aspect-video`, `aspect-[4/3]`)
+- a wrapper with `aspect-*` / `aspect-ratio` and `<Image fill>` inside
+- `<Image>` with `width`/`height` whose ratio is fixed by design rather than by
+  the asset — avatars, teaser/card thumbnails, hero banners, logo grids
+- any component where a portrait asset is shown in a landscape frame (or vice
+  versa) — that is exactly where centre-cropping cuts off heads
+
+**The change** — one option at the call site. `width`/`height` on `<Image>` stay
+as they are; they describe the layout, the loader now describes the crop:
+
+```diff
+- import { FlyoCdnLoader } from '@flyo/nitro-next/client';
++ import { FlyoCdnLoaderCrop } from '@flyo/nitro-next/client';
+
+  export function Avatar({ block }) {
+    return (
+      <Image
+-       loader={FlyoCdnLoader}
++       loader={FlyoCdnLoaderCrop({ aspectRatio: 1 })}
+        src={block.content.image.source}
+        alt={block.content.image.caption}
+        width={700}
+        height={700}
+        className="object-cover"
+      />
+    );
+  }
+```
+
+`aspectRatio` is `width / height`: `1` square, `16 / 9` widescreen, `4 / 3`,
+`3 / 4` portrait. The loader derives the height for **every** width in the
+generated `srcset`, so the request becomes `…/thumb/700x700?format=webp` — a
+real crop, focal point applied.
+
+Call the factory inline. It is only invoked while `<Image>` renders, to build a
+URL string; the same options produce the same `src` / `srcSet`, so there is
+nothing to hoist into a `const` or a `useMemo`.
+
+**One rule when applying this: match `aspectRatio` to the CSS, not to the
+asset.** If the frame is `aspect-video`, pass `16 / 9`. A mismatch means the
+browser crops the already-cropped image a second time.
+
+### Pass `maxWidth` when the source width is known
+
+The CDN returns the **untouched original** for any request wider than the stored
+asset — `…/thumb/1400x1400` on a 679×498 asset returns 679×498, uncropped, focus
+ignored. `next/image` generates `srcset` candidates well beyond the rendered
+size, so the crop can survive at small widths and vanish at large ones. If the
+Flyo media field exposes the original dimensions, pass them:
+
+```tsx
+<Image
+  loader={FlyoCdnLoaderCrop({ aspectRatio: 16 / 9, maxWidth: block.content.image.width })}
+  src={block.content.image.source}
+  alt={block.content.image.caption}
+  width={1600}
+  height={900}
+/>
+```
+
+Without `maxWidth` the requested width is passed through untouched and the CDN
+applies its own limits.
+
+### If the project wraps `<Image>` in its own component
+
+Projects generated from `ai-instructions-nextjs.md` usually have a
+`components/flyo/FlyoImage.tsx`. Extend it with an optional `aspectRatio` (and
+`maxWidth`) prop instead of touching every call site:
+
+```tsx
+'use client';
+
+import Image, { type ImageProps } from 'next/image';
+import { FlyoCdnLoader, FlyoCdnLoaderCrop } from '@flyo/nitro-next/client';
+
+type FlyoImageProps = Omit<ImageProps, 'loader'> & {
+  aspectRatio?: number;
+  maxWidth?: number;
+};
+
+export function FlyoImage({ aspectRatio, maxWidth, ...props }: FlyoImageProps) {
+  return (
+    <Image
+      loader={aspectRatio ? FlyoCdnLoaderCrop({ aspectRatio, maxWidth }) : FlyoCdnLoader}
+      {...props}
+    />
+  );
+}
+```
+
+Then the per-image change is `aspectRatio={16 / 9}` on the usages that render
+into a fixed frame.
+
+## API changes in v2.4
+
+Added:
+
+| Added | Where | Description |
+|-------|-------|-------------|
+| `FlyoCdnLoaderCrop(options?)` | `/client` (+ root) | Factory returning a `next/image` loader that requests `{width}x{height}`, so the CDN crops for real and applies the asset's focal point. |
+| `FlyoCdnLoaderCropOptions` | `/client` (+ root) | `{ aspectRatio?: number; format?: string; maxWidth?: number }`. |
+
+Options:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `aspectRatio` | – | `width / height`. Omitted → ratio-preserving `{width}xnull`, identical to `FlyoCdnLoader`. |
+| `format` | `'webp'` | Output format passed to the CDN. |
+| `maxWidth` | – | Optional upper bound for the requested width. Unset → passed through; the CDN applies its own limits. |
+
+Nothing removed, nothing renamed, no behavioral change to existing code:
+
+- `FlyoCdnLoader` still emits `{width}xnull` and is still the right loader for
+  images rendered at their natural ratio.
+- `FlyoCdnLoaderCrop()` **without** `aspectRatio` produces exactly the same URL
+  as `FlyoCdnLoader`.
+- Invalid `aspectRatio` / `maxWidth` values throw when the loader is created,
+  not on every image request.
+
+---
+
+# Upgrading from v2.2 to v2.3
 
 ## Overview
 

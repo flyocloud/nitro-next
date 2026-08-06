@@ -30,9 +30,10 @@ export {
 export type { Entity, Block, Page, ConfigResponse, Translation } from '@flyo/nitro-typescript';
 
 // Re-export client utilities for convenience
-// FlyoCdnLoader is re-exported here because it's a pure utility function without React hooks
-// or browser APIs, making it safe to use in Server Components (unlike FlyoMetric, FlyoWysiwyg, etc.)
-// This allows developers to import it directly in Server Components without needing '/client'
+// FlyoCdnLoader / FlyoCdnLoaderCrop are re-exported here because they're pure utility functions
+// without React hooks or browser APIs, making them safe to use in Server Components (unlike
+// FlyoMetric, FlyoWysiwyg, etc.)
+// This allows developers to import them directly in Server Components without needing '/client'
 // Note: Other client exports like FlyoMetric, FlyoWysiwyg, FlyoClientWrapper, editable, isProd
 // are available via '@flyo/nitro-next/client'
-export { FlyoCdnLoader } from './client';
+export { FlyoCdnLoader, FlyoCdnLoaderCrop, type FlyoCdnLoaderCropOptions } from './client';
