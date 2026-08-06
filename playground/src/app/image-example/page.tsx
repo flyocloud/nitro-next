@@ -54,7 +54,11 @@ export default async function ImageExamplePage() {
       </div>
 
       <div style={{ marginTop: '2rem' }}>
-        <h3>16:9 crop, clamped to a 1200px source — requests /thumb/1200x675 at most</h3>
+        <h3>
+          16:9 crop with maxWidth — the source is 1200px wide, so srcset candidates are
+          capped at /thumb/1200x675 instead of asking for a width the CDN would answer with
+          the uncropped original
+        </h3>
         <Image
           loader={wideLoader}
           src="https://storage.flyo.cloud/lowe_a8173f2a.jpg"

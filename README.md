@@ -462,9 +462,9 @@ This requests `…/thumb/700x700?format=webp`, so the CDN performs a real crop a
 | --- | --- | --- |
 | `aspectRatio` | – | Target ratio as `width / height` (`1`, `16 / 9`, `4 / 3`, …). Omitted → same ratio-preserving `{width}xnull` behaviour as `FlyoCdnLoader`. |
 | `format` | `'webp'` | Output format passed to the CDN. |
-| `maxWidth` | `2560` | Upper bound for the requested width. |
+| `maxWidth` | – | Optional upper bound for the requested width. Unset → the width is passed through and the CDN applies its own limits. |
 
-**Why `maxWidth` matters:** Flyo caps uploads at 2560px, and when a thumb request exceeds the stored source the CDN silently returns the *uncropped original* — e.g. `…/thumb/1400x1400` on a 679×498 source returns 679×498. Since `next/image` generates `srcset` candidates well beyond the rendered size, a large candidate would quietly lose the crop. `FlyoCdnLoaderCrop` clamps the width to `maxWidth` (2560 by default) to prevent this. When you know the original dimensions from the Flyo media field, pass them for exact results:
+**Why `maxWidth` exists:** when a thumb request is wider than the stored asset, the CDN returns the *uncropped original* — e.g. `…/thumb/1400x1400` on a 679×498 source returns 679×498, no crop, focal point ignored. Since `next/image` generates `srcset` candidates well beyond the rendered size, a large candidate can quietly lose the crop while the small ones keep it. When the Flyo media field gives you the original dimensions, pass them so every candidate stays croppable:
 
 ```tsx
 <Image
@@ -940,7 +940,7 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
   ```tsx
   import { FlyoCdnLoader } from '@flyo/nitro-next/client';
   ```
-- **`FlyoCdnLoaderCrop`** – Factory that creates a Flyo CDN image loader for a fixed aspect ratio (`{width}x{height}`), so the CDN performs a real crop and honours the asset's focal point. Also clamps the requested width to the source width to avoid the CDN's silent no-crop above the original.
+- **`FlyoCdnLoaderCrop`** – Factory that creates a Flyo CDN image loader for a fixed aspect ratio (`{width}x{height}`), so the CDN performs a real crop and honours the asset's focal point. Optional `maxWidth` avoids the CDN's silent no-crop above the source width.
   ```tsx
   import { FlyoCdnLoaderCrop } from '@flyo/nitro-next/client';
 

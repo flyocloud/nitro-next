@@ -78,11 +78,11 @@ describe('FlyoCdnLoaderCrop', () => {
     );
   });
 
-  it('clamps to the 2560px upload cap so the crop is not silently dropped', () => {
+  it('does not clamp when no maxWidth is given — the CDN applies its own limits', () => {
     const loader = FlyoCdnLoaderCrop({ aspectRatio: 1 });
 
     expect(loader({ src: 'me.png', width: 3840, quality: 75 })).toBe(
-      'https://storage.flyo.cloud/me.png/thumb/2560x2560?format=webp'
+      'https://storage.flyo.cloud/me.png/thumb/3840x3840?format=webp'
     );
   });
 
@@ -113,5 +113,10 @@ describe('FlyoCdnLoaderCrop', () => {
     expect(() => FlyoCdnLoaderCrop({ aspectRatio: 0 })).toThrow(/positive, finite number/);
     expect(() => FlyoCdnLoaderCrop({ aspectRatio: -1 })).toThrow(/positive, finite number/);
     expect(() => FlyoCdnLoaderCrop({ aspectRatio: Number.NaN })).toThrow(/positive, finite number/);
+  });
+
+  it('rejects an invalid maxWidth at creation time', () => {
+    expect(() => FlyoCdnLoaderCrop({ maxWidth: 0 })).toThrow(/at least 1/);
+    expect(() => FlyoCdnLoaderCrop({ maxWidth: Number.NaN })).toThrow(/at least 1/);
   });
 });

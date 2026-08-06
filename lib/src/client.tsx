@@ -374,14 +374,6 @@ export function FlyoWysiwyg({
 }
 
 /**
- * Largest width Flyo stores for an uploaded asset. Requesting a thumb wider
- * than the stored original makes the CDN return the untouched original — which
- * silently drops any crop (and with it the focal point). Used as the default
- * upper bound in `FlyoCdnLoaderCrop`.
- */
-const FLYO_MAX_SOURCE_WIDTH = 2560;
-
-/**
  * Prefixes `src` with the Flyo CDN host unless it already points at it.
  */
 function toFlyoCdnUrl(src: string): string {
@@ -444,13 +436,16 @@ export interface FlyoCdnLoaderCropOptions {
    */
   format?: string;
   /**
-   * Upper bound for the requested width. Flyo caps uploads at 2560px and
-   * returns the *uncropped original* whenever a thumb request exceeds the
-   * stored source, so an oversized srcset candidate would silently lose the
-   * crop. Clamping keeps every candidate croppable.
+   * Optional upper bound for the requested width, in pixels.
    *
-   * Defaults to `2560`. Set it to the actual source width when you know it
-   * (Flyo media fields expose the original dimensions) for exact results.
+   * The CDN returns the *uncropped original* whenever a thumb request exceeds
+   * the stored source, so an oversized srcset candidate silently loses the crop
+   * — and with it the focal point. Pass the asset's own width here when you
+   * know it (Flyo media fields expose the original dimensions) to keep every
+   * candidate croppable.
+   *
+   * Unset by default: the library does not assume any storage limit, the CDN
+   * applies its own.
    */
   maxWidth?: number;
 }
@@ -468,6 +463,10 @@ export interface FlyoCdnLoaderCropOptions {
  * This matters for focal points: Flyo only applies an asset's focus on crops
  * with a fixed aspect ratio. `400x400` honours the focus, `400xnull` does not
  * and the browser ends up centre-cropping via `object-cover` instead.
+ *
+ * Note that the CDN returns the untouched original — uncropped, focus ignored —
+ * for any request wider than the stored asset. Pass `maxWidth` when the source
+ * width is known to keep large srcset candidates croppable.
  *
  * @param options - Crop options, see {@link FlyoCdnLoaderCropOptions}
  * @returns A loader function for the next/image `loader` prop
@@ -503,7 +502,7 @@ export interface FlyoCdnLoaderCropOptions {
 export function FlyoCdnLoaderCrop(
   options: FlyoCdnLoaderCropOptions = {}
 ): (props: ImageLoaderProps) => string {
-  const { aspectRatio, format = 'webp', maxWidth = FLYO_MAX_SOURCE_WIDTH } = options;
+  const { aspectRatio, format = 'webp', maxWidth } = options;
 
   if (aspectRatio !== undefined && (!Number.isFinite(aspectRatio) || aspectRatio <= 0)) {
     throw new Error(
@@ -511,10 +510,16 @@ export function FlyoCdnLoaderCrop(
     );
   }
 
+  if (maxWidth !== undefined && (!Number.isFinite(maxWidth) || maxWidth < 1)) {
+    throw new Error(
+      `FlyoCdnLoaderCrop: "maxWidth" must be a finite number of at least 1, received ${maxWidth}.`
+    );
+  }
+
   return ({ src, width }: ImageLoaderProps): string => {
-    // Never request more than the source holds: above it the CDN returns the
-    // original, uncropped image and the focal point is lost.
-    const requestedWidth = Math.max(1, Math.min(width, maxWidth));
+    // Optional guard: above the stored source the CDN returns the original,
+    // uncropped image and the focal point is lost.
+    const requestedWidth = maxWidth === undefined ? width : Math.min(width, maxWidth);
     const height = aspectRatio ? Math.max(1, Math.round(requestedWidth / aspectRatio)) : 'null';
 
     return `${toFlyoCdnUrl(src)}/thumb/${requestedWidth}x${height}?format=${format}`;
