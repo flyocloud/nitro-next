@@ -428,6 +428,54 @@ The loader automatically:
 - Applies width-based transformations
 - Converts images to WebP format for optimal performance
 
+#### Focal point / cropped images with `FlyoCdnLoaderCrop`
+
+`FlyoCdnLoader` requests `{width}xnull`, a ratio-preserving resize — the CDN never crops, it only scales. Flyo applies an asset's **focal point only on crops with a fixed aspect ratio** (`250x250` uses the focus, `250xnull` does not, see the [Flyo asset docs](https://docs.flyo.cloud/doc/assets-images)). So with the plain loader the cropping happens in the browser (`object-fit: cover`), always from the centre, and the focal point is ignored.
+
+This cannot be fixed with `<Image>` props: Next.js only passes `{ src, width, quality }` to a loader — the `height` prop never reaches it. Use `FlyoCdnLoaderCrop` instead, which takes the aspect ratio once and derives the height for every width in the generated `srcset`:
+
+```tsx
+import Image from 'next/image';
+import { FlyoCdnLoaderCrop } from '@flyo/nitro-next/client';
+
+// Hoist the loader so it isn't re-created on every render
+const squareLoader = FlyoCdnLoaderCrop({ aspectRatio: 1 });
+
+export default function Avatar({ block }) {
+  return (
+    <Image
+      loader={squareLoader}
+      src={block.content.image.source}
+      alt={block.content.image.caption}
+      width={700}
+      height={700}
+    />
+  );
+}
+```
+
+This requests `…/thumb/700x700?format=webp`, so the CDN performs a real crop and honours the focal point.
+
+**Options**
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `aspectRatio` | – | Target ratio as `width / height` (`1`, `16 / 9`, `4 / 3`, …). Omitted → same ratio-preserving `{width}xnull` behaviour as `FlyoCdnLoader`. |
+| `format` | `'webp'` | Output format passed to the CDN. |
+| `maxWidth` | `2560` | Upper bound for the requested width. |
+
+**Why `maxWidth` matters:** Flyo caps uploads at 2560px, and when a thumb request exceeds the stored source the CDN silently returns the *uncropped original* — e.g. `…/thumb/1400x1400` on a 679×498 source returns 679×498. Since `next/image` generates `srcset` candidates well beyond the rendered size, a large candidate would quietly lose the crop. `FlyoCdnLoaderCrop` clamps the width to `maxWidth` (2560 by default) to prevent this. When you know the original dimensions from the Flyo media field, pass them for exact results:
+
+```tsx
+<Image
+  loader={FlyoCdnLoaderCrop({ aspectRatio: 16 / 9, maxWidth: block.content.image.width })}
+  src={block.content.image.source}
+  alt=""
+  width={1600}
+  height={900}
+/>
+```
+
 ### 10. Nested Blocks (Slots)
 
 When blocks contain nested blocks in slots, use the `NitroSlot` component to recursively render them. In v2, `NitroSlot` requires the `flyo` prop — import it from your config file:
@@ -888,9 +936,15 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
   ```tsx
   import { FlyoWysiwyg } from '@flyo/nitro-next/client';
   ```
-- **`FlyoCdnLoader`** – Image loader for Next.js Image component that optimizes images through Flyo CDN with automatic format conversion and resizing.
+- **`FlyoCdnLoader`** – Image loader for Next.js Image component that optimizes images through Flyo CDN with automatic format conversion and ratio-preserving resizing (`{width}xnull`, no crop, focal point not applied).
   ```tsx
   import { FlyoCdnLoader } from '@flyo/nitro-next/client';
+  ```
+- **`FlyoCdnLoaderCrop`** – Factory that creates a Flyo CDN image loader for a fixed aspect ratio (`{width}x{height}`), so the CDN performs a real crop and honours the asset's focal point. Also clamps the requested width to the source width to avoid the CDN's silent no-crop above the original.
+  ```tsx
+  import { FlyoCdnLoaderCrop } from '@flyo/nitro-next/client';
+
+  const loader = FlyoCdnLoaderCrop({ aspectRatio: 1 });
   ```
 - **`FlyoMetric`** – Component for tracking entity metrics in production. Automatically sends a metric tracking request to the Flyo API when in production environment and the entity has a metric API URL configured.
   ```tsx
