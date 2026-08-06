@@ -367,6 +367,20 @@ describe('Page Route Factories', () => {
       expect(metadata.description).toBe('Learn about us');
     });
 
+    it('builds social images with the CDN query format instead of /thumb', async () => {
+      const generateMetadata = nitroPageGenerateMetadata(flyo);
+      const metadata = await generateMetadata({
+        params: Promise.resolve({ slug: ['about'] })
+      });
+
+      expect(metadata.openGraph?.images).toEqual([
+        'https://example.com/about.jpg?w=1200&h=630&format=jpg'
+      ]);
+      expect(metadata.twitter?.images).toEqual([
+        'https://example.com/about.jpg?w=1200&h=600&format=jpg'
+      ]);
+    });
+
     it('throws not found for invalid page', async () => {
       const generateMetadata = nitroPageGenerateMetadata(flyo);
       await expect(

@@ -424,7 +424,7 @@ Example usage inside a future block component:
 />
 ```
 
-Pass `aspectRatio` whenever the image is rendered in a fixed frame (`object-cover`, square avatars, 16:9 heroes). `FlyoCdnLoader` requests `{width}xnull`, which is a ratio-preserving resize — Flyo only applies an asset's focal point on crops with a fixed aspect ratio, so without `aspectRatio` the browser centre-crops and the focal point is lost. Next.js never passes `height` to a loader, so the ratio has to be declared at the call site:
+Pass `aspectRatio` whenever the image is rendered in a fixed frame (`object-cover`, square avatars, 16:9 heroes). `FlyoCdnLoader` requests `?w={width}`, which is a ratio-preserving resize — Flyo only applies an asset's focal point when both `w` and `h` are set, so without `aspectRatio` the browser centre-crops and the focal point is lost. Next.js never passes `height` to a loader, so the ratio has to be declared at the call site:
 
 ```
 <FlyoImage
@@ -435,6 +435,12 @@ Pass `aspectRatio` whenever the image is rendered in a fixed frame (`object-cove
   height={900}
 />
 ```
+
+Never build Flyo CDN URLs by hand. The loaders emit the current format —
+`{file}?w=300&h=300&format=webp`, where a dynamic side is expressed by omitting
+the parameter (`?w=300` keeps the ratio). The legacy `{file}/thumb/300x300` path
+is deprecated, and `{file}/filter/300x300` was removed on 06.08.2026 and returns
+HTTP 404.
 
 ### 10. Create a reusable Claude skill for building a named Flyo block
 Do not manually add a full block convention section to the advisory only. Instead, create a reusable Claude skill that future agents can use to build or update **one named Flyo block at a time**, driven by a design brief or by an existing component that should be converted into a block.

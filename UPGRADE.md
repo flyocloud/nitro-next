@@ -1,3 +1,110 @@
+# Upgrading from v2.4 to v2.5
+
+> This guide is written for both humans and AI coding agents. Steps are explicit
+> enough to follow by hand and precise enough to apply programmatically.
+
+## Overview
+
+v2.5 migrates every generated image URL to the **new Flyo CDN URL format**
+announced for **06.08.2026**. The API is unchanged — same loaders, same
+options, same call sites. **If you only use `FlyoCdnLoader`, `FlyoCdnLoaderCrop`
+and the built-in metadata helpers, there is nothing to do.**
+
+**What changed.** Image transformations move from a path segment to query
+parameters:
+
+```diff
+- https://storage.flyo.cloud/me.png/thumb/700x700?format=webp
++ https://storage.flyo.cloud/me.png?w=700&h=700&format=webp
+
+- https://storage.flyo.cloud/me.png/thumb/700xnull?format=webp
++ https://storage.flyo.cloud/me.png?w=700&format=webp
+```
+
+**Why now.** The old `/filter/{w}x{h}` form — and every other
+`{file}/{word}/{w}x{h}` variant — was **removed on 06.08.2026** and returns
+**HTTP 404**. `/thumb/{w}x{h}` still works and is scheduled for removal no
+earlier than **06.08.2028**, so this is a migration you can do calmly, but the
+library no longer emits a deprecated URL.
+
+## The new format
+
+| URL | Result |
+| --- | --- |
+| `{file}` | original image |
+| `{file}?w=300&h=300` | fixed size (crop, focal point applied) |
+| `{file}?w=300` | height dynamic (aspect ratio preserved) |
+| `{file}?h=300` | width dynamic |
+| `{file}?w=300&h=300&format=webp` | convert format (`webp`, `jpg`, `jpeg`, `png`, `gif`) |
+| `{file}?w=300&h=300&download=1` | deliver as a download |
+
+Rules:
+
+- `w` / `h` are positive integers without leading zeros.
+- A dynamic side is expressed by **omitting** the parameter. `0`, an empty value
+  and the literal `null` are **invalid** and answered with **HTTP 400** — so the
+  old `nullx300` / `300xnull` spelling has no query-parameter equivalent, you
+  just leave the parameter out.
+- Values above `2560` are capped at `2560` by the CDN.
+- `format` without `w` / `h` is ignored; the unmodified original is returned.
+- The focal point only applies when **both** `w` and `h` are set — unchanged
+  from v2.4, only the spelling is new.
+
+## What to do
+
+### If you only use the library's loaders and metadata helpers
+
+Nothing. `FlyoCdnLoader`, `FlyoCdnLoaderCrop` and the Open Graph / Twitter image
+URLs in `nitroPageGenerateMetadata` / `nitroEntityGenerateMetadata` emit the new
+format automatically.
+
+### If your project builds CDN URLs by hand
+
+Search your codebase for `/thumb/` and `/filter/` (typically string templates
+around a media field's `source`) and rewrite them:
+
+| Old | New |
+| --- | --- |
+| `/thumb/{B}x{H}` | `?w={B}&h={H}` |
+| `/thumb/{B}xnull` | `?w={B}` |
+| `/thumb/nullx{H}` | `?h={H}` |
+| `/filter/{B}x{H}` | `?w={B}&h={H}` — **fix this one first, it 404s today** |
+| `/filter/thumb/{B}x{H}/{file}` | `{file}?w={B}&h={H}` — **also 404s today** |
+
+```diff
+- const og = `${image}/thumb/1200x630?format=jpg`;
++ const og = `${image}?w=1200&h=630&format=jpg`;
+```
+
+Watch the separator when the source URL may already carry a query string: use
+`&` instead of `?` in that case (the library does this for you).
+
+### If you assert on generated URLs in tests
+
+Snapshot or string assertions on `…/thumb/…` need updating to the query form.
+The rendered image is identical; only the URL changed.
+
+## API changes in v2.5
+
+None. No export was added, removed or renamed, and no option changed its
+meaning.
+
+Behavioral changes:
+
+| Where | Before (v2.4) | After (v2.5) |
+|-------|---------------|--------------|
+| `FlyoCdnLoader` | `{src}/thumb/{width}xnull?format=webp` | `{src}?w={width}&format=webp` |
+| `FlyoCdnLoaderCrop({ aspectRatio })` | `{src}/thumb/{width}x{height}?format={format}` | `{src}?w={width}&h={height}&format={format}` |
+| `FlyoCdnLoaderCrop()` (no ratio) | `{src}/thumb/{width}xnull?format={format}` | `{src}?w={width}&format={format}` |
+| `nitroPageGenerateMetadata` / `nitroEntityGenerateMetadata` | `{image}/thumb/1200x630?format=jpg` (og), `…/1200x600` (twitter) | `{image}?w=1200&h=630&format=jpg` (og), `…?w=1200&h=600&format=jpg` (twitter) |
+
+Additionally, a `src` that already contains a query string is now appended to
+with `&` instead of producing a second `?`, and widths/heights are always
+emitted as positive integers (a sub-pixel result is floored at `1` rather than
+sent as `0`, which the CDN rejects with an HTTP 400).
+
+---
+
 # Upgrading from v2.3 to v2.4
 
 > This guide is written for both humans and AI coding agents. Steps are explicit
@@ -12,11 +119,11 @@ What's new: **`FlyoCdnLoaderCrop`**, a second image loader for images that are
 displayed in a **fixed aspect ratio**. It exists because the existing loader
 cannot honour an asset's **focal point**.
 
-**Why the focal point was being ignored.** `FlyoCdnLoader` requests
-`…/thumb/{width}xnull`, a ratio-preserving resize. Flyo applies an asset's focus
-**only on crops with a fixed aspect ratio** — `250x250` uses the focus,
-`250xnull` does not ([Flyo asset
-docs](https://docs.flyo.cloud/doc/assets-images)). So every image ended up
+**Why the focal point was being ignored.** `FlyoCdnLoader` requests a
+ratio-preserving resize (`…/thumb/{width}xnull` in v2.4, `…?w={width}` since
+v2.5). Flyo applies an asset's focus **only when a fixed aspect ratio is
+requested** — a `250x250` crop uses the focus, a width-only resize does not
+([Flyo asset docs](https://docs.flyo.cloud/doc/assets-images)). So every image ended up
 scaled by the CDN and then cropped **by the browser** through
 `object-fit: cover`, which always crops from the centre. Whatever focal point
 an editor set in the content hub had no effect.
@@ -71,8 +178,8 @@ as they are; they describe the layout, the loader now describes the crop:
 
 `aspectRatio` is `width / height`: `1` square, `16 / 9` widescreen, `4 / 3`,
 `3 / 4` portrait. The loader derives the height for **every** width in the
-generated `srcset`, so the request becomes `…/thumb/700x700?format=webp` — a
-real crop, focal point applied.
+generated `srcset`, so the request becomes `…?w=700&h=700&format=webp` (v2.4
+emitted `…/thumb/700x700?format=webp`) — a real crop, focal point applied.
 
 Call the factory inline. It is only invoked while `<Image>` renders, to build a
 URL string; the same options produce the same `src` / `srcSet`, so there is
@@ -85,7 +192,7 @@ browser crops the already-cropped image a second time.
 ### Pass `maxWidth` when the source width is known
 
 The CDN returns the **untouched original** for any request wider than the stored
-asset — `…/thumb/1400x1400` on a 679×498 asset returns 679×498, uncropped, focus
+asset — `…?w=1400&h=1400` on a 679×498 asset returns 679×498, uncropped, focus
 ignored. `next/image` generates `srcset` candidates well beyond the rendered
 size, so the crop can survive at small widths and vanish at large ones. If the
 Flyo media field exposes the original dimensions, pass them:
@@ -139,21 +246,21 @@ Added:
 
 | Added | Where | Description |
 |-------|-------|-------------|
-| `FlyoCdnLoaderCrop(options?)` | `/client` (+ root) | Factory returning a `next/image` loader that requests `{width}x{height}`, so the CDN crops for real and applies the asset's focal point. |
+| `FlyoCdnLoaderCrop(options?)` | `/client` (+ root) | Factory returning a `next/image` loader that requests a fixed width **and** height, so the CDN crops for real and applies the asset's focal point. |
 | `FlyoCdnLoaderCropOptions` | `/client` (+ root) | `{ aspectRatio?: number; format?: string; maxWidth?: number }`. |
 
 Options:
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `aspectRatio` | – | `width / height`. Omitted → ratio-preserving `{width}xnull`, identical to `FlyoCdnLoader`. |
+| `aspectRatio` | – | `width / height`. Omitted → ratio-preserving width-only resize, identical to `FlyoCdnLoader`. |
 | `format` | `'webp'` | Output format passed to the CDN. |
 | `maxWidth` | – | Optional upper bound for the requested width. Unset → passed through; the CDN applies its own limits. |
 
 Nothing removed, nothing renamed, no behavioral change to existing code:
 
-- `FlyoCdnLoader` still emits `{width}xnull` and is still the right loader for
-  images rendered at their natural ratio.
+- `FlyoCdnLoader` still emits a width-only, ratio-preserving resize and is still
+  the right loader for images rendered at their natural ratio.
 - `FlyoCdnLoaderCrop()` **without** `aspectRatio` produces exactly the same URL
   as `FlyoCdnLoader`.
 - Invalid `aspectRatio` / `maxWidth` values throw when the loader is created,
