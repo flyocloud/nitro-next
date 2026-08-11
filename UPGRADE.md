@@ -1,3 +1,99 @@
+# Upgrading from v2.5 to v2.6
+
+> This guide is written for both humans and AI coding agents. Steps are explicit
+> enough to follow by hand and precise enough to apply programmatically.
+
+## Overview
+
+v2.6 changes how `flyo.sitemap()` builds its URLs and adds one **required**
+line to your `app/sitemap.ts`. The library API is unchanged — same export, same
+signature, same return type.
+
+1. **URLs now come from the API's `href`.** The Flyo Nitro `/sitemap` endpoint
+   returns a resolved `href` for every item, so the library no longer stitches a
+   path together from `routes` / `entity_slug`.
+2. **Your `app/sitemap.ts` needs `export const revalidate`.** Without it Next.js
+   renders the sitemap once at build time and never again.
+
+## What to do
+
+### Add `revalidate` to `app/sitemap.ts` — required
+
+```diff
+  import { flyo } from '@/flyo.config';
+
++ export const revalidate = 3600; // regenerate sitemap.xml at most hourly
++
+  export default async function sitemap() {
+    return flyo.sitemap();
+  }
+```
+
+**Why.** A `sitemap.ts` with no dynamic API usage and no `revalidate` is a
+**fully static** route: Next.js runs it once during `next build`, writes
+`sitemap.xml` into the build output, and serves that file for the lifetime of
+the deployment. On Vercel — and on any host serving the build output — pages and
+entities published in Flyo *after* the deploy therefore **never** appear in the
+sitemap until someone triggers a new build. Search engines keep crawling a
+sitemap that is frozen at deploy time.
+
+Exporting `revalidate` turns the route into an ISR route: the first request
+after the window elapses regenerates `sitemap.xml` in the background from live
+Flyo content. `3600` (hourly) is a good default — raise it for rarely-changing
+sites, lower it for news-style content. `0` regenerates on every request, which
+means a full sitemap fetch against the Flyo API per request; only use it if you
+really need it.
+
+This applies to any project on any v2 version — it is listed under v2.6 because
+that is when it became documented, not because the behavior changed.
+
+### If you relied on the old route/slug fallback
+
+Nothing to do in normal projects, but the emitted URLs can differ, so re-check
+`/sitemap.xml` after upgrading:
+
+- URLs now come from `href`, which is the same path the CMS links to. Previously
+  the library took the **first value** of the item's `routes` map and fell back
+  to `entity_slug`.
+- Items **without** an `href` are now **skipped**. Previously an item whose route
+  could not be resolved produced a bare base URL, so an unrouted item silently
+  added a duplicate homepage entry.
+- `routes` gained a system `_empty` boolean. The old "first value of `routes`"
+  logic could pick that boolean up and interpolate `false` into a URL — another
+  reason the fallback is gone.
+- An `href` that is already absolute (`https://…`) is emitted unchanged instead
+  of being appended to `baseUrl`.
+
+If your own code builds links from a sitemap or search result, switch it to
+`href` for the same reasons:
+
+```diff
+- const path = Object.values(item.routes ?? {})[0] ?? item.entity_slug;
++ const path = item.href;
+```
+
+### Multilingual sites
+
+The `/sitemap` endpoint returns **all** language variants of every page and
+entity regardless of the `lang` parameter, so `flyo.sitemap()` now covers every
+locale out of the box. If you previously generated one sitemap per locale by
+hand, you can drop that workaround — and check for duplicates if you keep it.
+
+## API changes in v2.6
+
+None. No export was added, removed or renamed, and no option changed its
+meaning.
+
+Behavioral changes:
+
+| Where | Before (v2.5) | After (v2.6) |
+|-------|---------------|--------------|
+| `flyo.sitemap()` URL path | first value of `item.routes`, else `item.entity_slug` | `item.href` |
+| Item with no resolvable route | emitted as the bare `baseUrl` | skipped |
+| Item with an absolute `href` | n/a (path was always appended) | emitted unchanged |
+
+---
+
 # Upgrading from v2.4 to v2.5
 
 > This guide is written for both humans and AI coding agents. Steps are explicit
@@ -919,10 +1015,17 @@ export default async function sitemap() {
 **After (v2):**
 ```tsx
 import { flyo } from '@/flyo.config';
+
+export const revalidate = 3600; // regenerate sitemap.xml at most hourly
+
 export default async function sitemap() {
   return flyo.sitemap();
 }
 ```
+
+Add the `revalidate` export even if your v1 file did not have one — see
+[Upgrading from v2.5 to v2.6](#upgrading-from-v25-to-v26) for why a sitemap
+without it is generated once at build time and then never again.
 
 ### 8. Components with `NitroSlot`
 

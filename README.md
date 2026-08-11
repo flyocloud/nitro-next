@@ -932,10 +932,14 @@ Create `app/sitemap.ts`:
 ```ts
 import { flyo } from '@/flyo.config';
 
+export const revalidate = 3600; // regenerate sitemap.xml at most hourly
+
 export default async function sitemap() {
   return flyo.sitemap();
 }
 ```
+
+> ⚠️ **Always export `revalidate`.** Without it, Next.js treats `sitemap.ts` as a **fully static** route: it runs once during `next build` and the resulting `sitemap.xml` is served as a build artifact forever. On Vercel (and any other host serving the build output) that means content published in Flyo after the deploy **never** appears in the sitemap until the next deploy. `export const revalidate = 3600` turns the route into an ISR route that refetches at most once an hour — pick a larger value for rarely-changing sites, a smaller one for news-style content, or `0` to rebuild it on every request (rarely what you want, since it hits the Flyo API for the full sitemap each time).
 
 #### How it Works
 
