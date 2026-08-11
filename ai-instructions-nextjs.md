@@ -716,6 +716,8 @@ export default async function sitemap() {
 ```
 The `revalidate` export is **required**, not optional: without it Next.js renders `sitemap.ts` once at build time and serves the result as a static file, so content published in Flyo after the deploy never reaches `sitemap.xml`. Ensure `SITE_URL` is configured correctly in production.
 
+`flyo.sitemap()` fills each entry's `lastModified` from the item's `updated_at` (the last time that content changed in Flyo), not from the regeneration time — do not override it with `new Date()`. Entries whose item has no usable `updated_at` come back without a `lastModified`, so treat it as optional when post-processing the result.
+
 ### 12. Optional: Multilanguage (i18n)
 If the Flyo project is multilingual, make the integration locale-aware. Ask the user:
 
