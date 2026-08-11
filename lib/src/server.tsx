@@ -285,27 +285,25 @@ export function initNitro({
     const items = await sitemapApi.sitemap({ lang: sitemapLang });
     const cleanBaseUrl = state.baseUrl.endsWith('/') ? state.baseUrl.slice(0, -1) : state.baseUrl;
 
-    return items.map((item) => {
-      let path = '';
+    // The API resolves the final URL path of every sitemap item into `href`
+    // (all language variants included), so we no longer stitch a path together
+    // from `routes` / `entity_slug`. Items without an `href` have no reachable
+    // route and are skipped — emitting them would duplicate the base URL.
+    return items.reduce<MetadataRoute.Sitemap>((entries, item) => {
+      const href = item.href?.trim();
 
-      if (item.routes && typeof item.routes === 'object') {
-        const routeValues = Object.values(item.routes);
-        if (routeValues.length > 0) {
-          path = routeValues[0];
-        }
+      if (!href) {
+        return entries;
       }
 
-      if (!path && item.entity_slug) {
-        path = item.entity_slug;
-      }
+      const url = /^https?:\/\//i.test(href)
+        ? href
+        : `${cleanBaseUrl}${href.startsWith('/') ? href : `/${href}`}`;
 
-      const cleanPath = path && !path.startsWith('/') ? `/${path}` : path;
+      entries.push({ url, lastModified: new Date() });
 
-      return {
-        url: `${cleanBaseUrl}${cleanPath}`,
-        lastModified: new Date(),
-      };
-    });
+      return entries;
+    }, []);
   };
 
   return {

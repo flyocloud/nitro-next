@@ -708,11 +708,13 @@ Use:
 ```
 import { flyo } from '@/flyo.config';
 
+export const revalidate = 3600; // regenerate sitemap.xml at most hourly
+
 export default async function sitemap() {
   return flyo.sitemap();
 }
 ```
-Ensure `SITE_URL` is configured correctly in production.
+The `revalidate` export is **required**, not optional: without it Next.js renders `sitemap.ts` once at build time and serves the result as a static file, so content published in Flyo after the deploy never reaches `sitemap.xml`. Ensure `SITE_URL` is configured correctly in production.
 
 ### 12. Optional: Multilanguage (i18n)
 If the Flyo project is multilingual, make the integration locale-aware. Ask the user:
@@ -862,7 +864,7 @@ generated/flyo.ts exists
 app/[[...slug]]/page.tsx exists
 components/flyo/wysiwyg/AppWysiwyg.tsx exists
 components/flyo/FlyoImage.tsx exists
-app/sitemap.ts exists
+app/sitemap.ts exists and exports revalidate
 .claude/skills/flyo-block/SKILL.md exists
 AGENTS.md exists at the project root and references the Flyo Nitro docs (github.com/flyocloud/nitro-next#usage and the raw ai-instructions-nextjs.md)
 The project builds successfully
