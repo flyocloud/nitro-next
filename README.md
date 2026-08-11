@@ -907,7 +907,7 @@ If a custom route forgets `NitroLanguageLinks`, the switcher simply renders your
 
 `nitroPageGenerateMetadata` and `nitroEntityGenerateMetadata` automatically emit `alternates.languages` (plus a canonical) from `translation[]`, so Next.js renders `<link rel="alternate" hreflang="…">` tags. No extra work.
 
-> **Note:** `flyo.sitemap()` currently emits one URL per item; a fully multilingual sitemap (all language variants) is a planned enhancement.
+> **Note:** `flyo.sitemap()` emits one URL per item returned by the sitemap endpoint. In a multilingual setup that endpoint returns **all** language variants of every page and entity (regardless of the configured `lang`), so the generated sitemap covers every locale.
 
 ### 13. Sitemap Generation
 
@@ -940,8 +940,8 @@ export default async function sitemap() {
 #### How it Works
 
 1. **Fetches all content**: The `flyo.sitemap()` method fetches all pages and entities from the Flyo Nitro sitemap endpoint
-2. **Uses configured baseUrl**: It constructs full URLs using the `baseUrl` from your Nitro configuration
-3. **Handles routes**: Prioritizes the `routes` object from entities, falls back to `entity_slug`
+2. **Uses the resolved `href`**: Every sitemap item ships an `href` with its final URL path — that value is used as-is (no more stitching a path together from `routes` or `entity_slug`)
+3. **Uses configured baseUrl**: It prefixes the `href` with the `baseUrl` from your Nitro configuration; items without an `href` have no reachable route and are skipped
 4. **Returns Next.js format**: Outputs the standard `MetadataRoute.Sitemap` format that Next.js expects
 
 #### Environment Variables

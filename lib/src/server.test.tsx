@@ -45,9 +45,15 @@ jest.mock('next/headers', () => ({
   headers: jest.fn(async () => ({ get: () => null })),
 }));
 
+// Items returned by the mocked SitemapApi; each sitemap test sets its own.
+let mockSitemapItems: Array<Record<string, unknown>> = [];
+
 // Mock @flyo/nitro-typescript
 jest.mock('@flyo/nitro-typescript', () => {
   return {
+    SitemapApi: jest.fn().mockImplementation(() => ({
+      sitemap: jest.fn().mockImplementation(() => Promise.resolve(mockSitemapItems)),
+    })),
     Configuration: jest.fn().mockImplementation((config) => ({
       ...config,
       apiKey: config.apiKey
@@ -171,6 +177,85 @@ describe('flyo.getNitroConfig', () => {
       title: 'Mock Config',
       pages: ['', 'about', 'blog/post-1']
     });
+  });
+});
+
+describe('flyo.sitemap', () => {
+  beforeEach(() => {
+    mockSitemapItems = [];
+  });
+
+  it('throws when baseUrl is not configured', async () => {
+    const flyo = initNitro({ accessToken: 'test-token' });
+    await expect(flyo.sitemap()).rejects.toThrow('baseUrl is not configured');
+  });
+
+  it('builds urls from the href of each item', async () => {
+    mockSitemapItems = [
+      { href: '/', entity_slug: 'home' },
+      { href: '/news/news-title-1', entity_slug: 'news-title-1' },
+    ];
+    const flyo = initNitro({ accessToken: 'test-token', baseUrl: 'https://example.com' });
+    const entries = await flyo.sitemap();
+    expect(entries.map((entry) => entry.url)).toEqual([
+      'https://example.com/',
+      'https://example.com/news/news-title-1',
+    ]);
+    expect(entries[0].lastModified).toBeInstanceOf(Date);
+  });
+
+  it('ignores routes and entity_slug when an href is present', async () => {
+    mockSitemapItems = [
+      {
+        href: '/news/news-title-1',
+        entity_slug: 'news-title-1',
+        routes: { detail: 'view/2348uc/news-title-1', _empty: false },
+      },
+    ];
+    const flyo = initNitro({ accessToken: 'test-token', baseUrl: 'https://example.com' });
+    const entries = await flyo.sitemap();
+    expect(entries.map((entry) => entry.url)).toEqual(['https://example.com/news/news-title-1']);
+  });
+
+  it('skips items without a usable href instead of emitting the base url', async () => {
+    mockSitemapItems = [
+      { entity_slug: 'unrouted', routes: { _empty: true } },
+      { href: '' },
+      { href: '   ' },
+      { href: '/about' },
+    ];
+    const flyo = initNitro({ accessToken: 'test-token', baseUrl: 'https://example.com' });
+    const entries = await flyo.sitemap();
+    expect(entries.map((entry) => entry.url)).toEqual(['https://example.com/about']);
+  });
+
+  it('normalizes a trailing slash on baseUrl and a missing leading slash on href', async () => {
+    mockSitemapItems = [{ href: 'about' }];
+    const flyo = initNitro({ accessToken: 'test-token', baseUrl: 'https://example.com/' });
+    const entries = await flyo.sitemap();
+    expect(entries.map((entry) => entry.url)).toEqual(['https://example.com/about']);
+  });
+
+  it('keeps absolute hrefs as-is', async () => {
+    mockSitemapItems = [{ href: 'https://other.example.com/page' }];
+    const flyo = initNitro({ accessToken: 'test-token', baseUrl: 'https://example.com' });
+    const entries = await flyo.sitemap();
+    expect(entries.map((entry) => entry.url)).toEqual(['https://other.example.com/page']);
+  });
+
+  it('emits every language variant returned by the api', async () => {
+    mockSitemapItems = [{ href: '/de/ueber-uns' }, { href: '/en/about-us' }];
+    const flyo = initNitro({
+      accessToken: 'test-token',
+      baseUrl: 'https://example.com',
+      defaultLocale: 'de',
+      locales: ['de', 'en'],
+    });
+    const entries = await flyo.sitemap();
+    expect(entries.map((entry) => entry.url)).toEqual([
+      'https://example.com/de/ueber-uns',
+      'https://example.com/en/about-us',
+    ]);
   });
 });
 
