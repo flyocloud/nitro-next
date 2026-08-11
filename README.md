@@ -946,7 +946,10 @@ export default async function sitemap() {
 1. **Fetches all content**: The `flyo.sitemap()` method fetches all pages and entities from the Flyo Nitro sitemap endpoint
 2. **Uses the resolved `href`**: Every sitemap item ships an `href` with its final URL path — that value is used as-is (no more stitching a path together from `routes` or `entity_slug`)
 3. **Uses configured baseUrl**: It prefixes the `href` with the `baseUrl` from your Nitro configuration; items without an `href` have no reachable route and are skipped
-4. **Returns Next.js format**: Outputs the standard `MetadataRoute.Sitemap` format that Next.js expects
+4. **Uses `updated_at` as `lastmod`**: Every item also ships an `updated_at` Unix timestamp — the last time the content behind that URL actually changed — which becomes the entry's `lastModified`. Items without a usable timestamp are emitted without a `lastmod`
+5. **Returns Next.js format**: Outputs the standard `MetadataRoute.Sitemap` format that Next.js expects
+
+> **Why `lastmod` is not simply "now".** Regenerating the sitemap does not change any content, so stamping every entry with the regeneration time would tell search engines the whole site changed every hour. Google discounts `lastmod` for a site once it stops matching reality — `updated_at` keeps the signal truthful, and pages that really did change are the ones that get recrawled.
 
 #### Environment Variables
 

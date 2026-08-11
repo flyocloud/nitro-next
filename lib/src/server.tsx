@@ -13,6 +13,7 @@ import {
   EntitiesApi,
   SitemapApi,
   SearchApi,
+  type MetaImage,
   type Translation
 } from '@flyo/nitro-typescript';
 
@@ -123,6 +124,27 @@ function deriveLangFromPath(path: string | undefined, state: NitroState): string
   return firstSegment && state.locales.includes(firstSegment)
     ? firstSegment
     : (state.defaultLocale ?? undefined);
+}
+
+/**
+ * Turn a sitemap item's `updated_at` into a `lastmod` date.
+ *
+ * The API sends a Unix timestamp in **seconds**, `Date` expects milliseconds.
+ * Anything that is not a usable timestamp yields `undefined`, so the entry is
+ * emitted without a `lastmod` rather than with an invented one — search engines
+ * discount `lastmod` site-wide once it stops matching reality, which is exactly
+ * what stamping every entry with "now" on each regeneration would do.
+ */
+function toLastModified(updatedAt: number | string | undefined): Date | undefined {
+  const seconds = typeof updatedAt === 'string' ? Number(updatedAt) : updatedAt;
+
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) {
+    return undefined;
+  }
+
+  const date = new Date(seconds * 1000);
+
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }
 
 /**
@@ -300,7 +322,12 @@ export function initNitro({
         ? href
         : `${cleanBaseUrl}${href.startsWith('/') ? href : `/${href}`}`;
 
-      entries.push({ url, lastModified: new Date() });
+      // `updated_at` is when the content of that URL last actually changed, so
+      // it is the honest `lastmod`. Items that ship without one are emitted
+      // without a `lastmod` at all.
+      const lastModified = toLastModified(item.updated_at);
+
+      entries.push(lastModified ? { url, lastModified } : { url });
 
       return entries;
     }, []);
@@ -604,9 +631,17 @@ function buildLanguageAlternates(
  * (`?w=…&h=…&format=jpg`), the successor of the deprecated `/thumb/{w}x{h}`
  * path segment. Both `w` and `h` are set, so the CDN crops and applies the
  * asset's focal point.
+ *
+ * A page's `meta_json.image` is `false` — not `''` — when no meta image is set
+ * (hence the `MetaImage` union), so a plain falsy check is not enough to make
+ * TypeScript happy about the string operations below.
  */
-function buildSocialImageUrl(image: string, width: number, height: number): string | undefined {
-  if (!image) {
+function buildSocialImageUrl(
+  image: MetaImage | undefined,
+  width: number,
+  height: number,
+): string | undefined {
+  if (typeof image !== 'string' || !image) {
     return undefined;
   }
 
@@ -905,7 +940,7 @@ export function nitroPageGenerateMetadata(flyo: FlyoInstance) {
     const meta = page.meta_json;
     const title = meta?.title || page.title || '';
     const description = meta?.description ?? '';
-    const image = meta?.image ?? '';
+    const image = meta?.image;
 
     const ogImage = buildSocialImageUrl(image, 1200, 630);
     const twImage = buildSocialImageUrl(image, 1200, 600);

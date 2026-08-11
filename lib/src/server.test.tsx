@@ -59,9 +59,9 @@ jest.mock('@flyo/nitro-typescript', () => {
       apiKey: config.apiKey
     })),
     ConfigApi: jest.fn().mockImplementation(() => ({
-      config: jest.fn().mockResolvedValue({ 
+      config: jest.fn().mockResolvedValue({
         title: 'Mock Config',
-        pages: ['', 'about', 'blog/post-1']
+        pages: ['', 'about', 'blog/post-1', 'no-meta-image']
       }),
     })),
     PagesApi: jest.fn().mockImplementation(() => ({
@@ -74,6 +74,15 @@ jest.mock('@flyo/nitro-typescript', () => {
               description: 'Learn about us',
               image: 'https://example.com/about.jpg'
             },
+            json: []
+          });
+        }
+        if (slug === 'no-meta-image') {
+          // The API sends `image: false` — not an empty string — when a page
+          // has no meta image set.
+          return Promise.resolve({
+            title: 'No Meta Image',
+            meta_json: { title: 'No Meta Image', description: '', image: false },
             json: []
           });
         }
@@ -173,9 +182,9 @@ describe('flyo.getNitroConfig', () => {
   it('returns config', async () => {
     const flyo = initNitro({ accessToken: 'test-token' });
     const config = await flyo.getNitroConfig();
-    expect(config).toEqual({ 
+    expect(config).toEqual({
       title: 'Mock Config',
-      pages: ['', 'about', 'blog/post-1']
+      pages: ['', 'about', 'blog/post-1', 'no-meta-image']
     });
   });
 });
@@ -201,7 +210,6 @@ describe('flyo.sitemap', () => {
       'https://example.com/',
       'https://example.com/news/news-title-1',
     ]);
-    expect(entries[0].lastModified).toBeInstanceOf(Date);
   });
 
   it('ignores routes and entity_slug when an href is present', async () => {
@@ -256,6 +264,50 @@ describe('flyo.sitemap', () => {
       'https://example.com/de/ueber-uns',
       'https://example.com/en/about-us',
     ]);
+  });
+
+  it('uses updated_at as lastModified', async () => {
+    mockSitemapItems = [{ href: '/about', updated_at: 1700000000 }];
+    const flyo = initNitro({ accessToken: 'test-token', baseUrl: 'https://example.com' });
+    const entries = await flyo.sitemap();
+    expect(entries[0].lastModified).toEqual(new Date('2023-11-14T22:13:20.000Z'));
+  });
+
+  it('keeps each item on its own timestamp', async () => {
+    mockSitemapItems = [
+      { href: '/one', updated_at: 1700000000 },
+      { href: '/two', updated_at: 1600000000 },
+    ];
+    const flyo = initNitro({ accessToken: 'test-token', baseUrl: 'https://example.com' });
+    const entries = await flyo.sitemap();
+    expect(entries.map((entry) => entry.lastModified)).toEqual([
+      new Date('2023-11-14T22:13:20.000Z'),
+      new Date('2020-09-13T12:26:40.000Z'),
+    ]);
+  });
+
+  it('accepts a numeric string timestamp', async () => {
+    mockSitemapItems = [{ href: '/about', updated_at: '1700000000' }];
+    const flyo = initNitro({ accessToken: 'test-token', baseUrl: 'https://example.com' });
+    const entries = await flyo.sitemap();
+    expect(entries[0].lastModified).toEqual(new Date('2023-11-14T22:13:20.000Z'));
+  });
+
+  it('omits lastModified when updated_at is missing or unusable', async () => {
+    mockSitemapItems = [
+      { href: '/no-timestamp' },
+      { href: '/zero', updated_at: 0 },
+      { href: '/negative', updated_at: -1 },
+      { href: '/not-a-number', updated_at: 'yesterday' },
+      { href: '/null', updated_at: null },
+    ];
+    const flyo = initNitro({ accessToken: 'test-token', baseUrl: 'https://example.com' });
+    const entries = await flyo.sitemap();
+    expect(entries).toHaveLength(5);
+    entries.forEach((entry) => {
+      expect(entry.lastModified).toBeUndefined();
+      expect(entry).not.toHaveProperty('lastModified');
+    });
   });
 });
 
@@ -436,7 +488,8 @@ describe('Page Route Factories', () => {
       expect(params).toEqual([
         { slug: undefined }, // homepage
         { slug: ['about'] },
-        { slug: ['blog', 'post-1'] }
+        { slug: ['blog', 'post-1'] },
+        { slug: ['no-meta-image'] }
       ]);
     });
   });
@@ -464,6 +517,16 @@ describe('Page Route Factories', () => {
       expect(metadata.twitter?.images).toEqual([
         'https://example.com/about.jpg?w=1200&h=600&format=jpg'
       ]);
+    });
+
+    it('emits no social images when the page has no meta image', async () => {
+      const generateMetadata = nitroPageGenerateMetadata(flyo);
+      const metadata = await generateMetadata({
+        params: Promise.resolve({ slug: ['no-meta-image'] })
+      });
+
+      expect(metadata.openGraph?.images).toEqual([]);
+      expect(metadata.twitter?.images).toEqual([]);
     });
 
     it('throws not found for invalid page', async () => {

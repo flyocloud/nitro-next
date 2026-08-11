@@ -1,3 +1,79 @@
+# Upgrading from v2.6 to v2.7
+
+> This guide is written for both humans and AI coding agents. Steps are explicit
+> enough to follow by hand and precise enough to apply programmatically.
+
+## Overview
+
+v2.7 changes the `lastmod` of every sitemap entry. **There is nothing to do** —
+no export, signature or option changed, and `app/sitemap.ts` stays as it is.
+
+The Flyo Nitro `/sitemap` endpoint now returns an `updated_at` Unix timestamp
+per item: the last time the content behind that URL actually changed.
+`flyo.sitemap()` uses it as the entry's `lastModified`, instead of stamping
+every entry with the time the sitemap happened to be generated.
+
+This requires `@flyo/nitro-typescript` **1.5.0** or newer, which is where the
+generated client learned about `updated_at`. It ships as a dependency of
+`@flyo/nitro-next`, so `npm install @flyo/nitro-next@^2.7.0` pulls it in — but
+if your project depends on the client directly, bump it there too.
+
+## What changed
+
+### `lastmod` now reflects the content, not the build
+
+Before, every entry carried `lastModified: new Date()`. Because `sitemap.ts` is
+an ISR route (see [v2.6](#upgrading-from-v25-to-v26)), that meant *every* URL
+claimed to have changed on *every* regeneration — hourly, with the recommended
+`revalidate = 3600`. Google discounts `lastmod` site-wide once it stops matching
+reality, so the value was at best ignored and at worst harmful.
+
+Now the timestamp comes from the item's `updated_at`, so only URLs whose content
+really changed move their `lastmod`.
+
+### Items without a timestamp have no `lastmod`
+
+An entry whose `updated_at` is missing, zero or not a number is emitted as
+`{ url }` with **no** `lastModified` key. `lastmod` is optional in the sitemap
+protocol, and omitting it is the honest answer — the previous "now" was not.
+
+If your own code post-processes `flyo.sitemap()` output, note that
+`entry.lastModified` can now be `undefined`:
+
+```diff
+- const changed = entry.lastModified.toISOString();
++ const changed = entry.lastModified?.toISOString();
+```
+
+### A page without a meta image no longer types as a string
+
+Unrelated to the sitemap, but part of the same client bump: `meta_json.image` is
+now typed `MetaImage` (`string | boolean`), because the API returns `false` — not
+`''` — when a page has no meta image. The metadata helpers already handled that
+value at runtime and are unchanged; only the type is more honest now. If your own
+code reads `page.meta_json?.image`, narrow it before using it as a URL:
+
+```diff
+- const src = page.meta_json?.image ?? '';
++ const image = page.meta_json?.image;
++ const src = typeof image === 'string' ? image : '';
+```
+
+## API changes in v2.7
+
+None. No export was added, removed or renamed, and no option changed its
+meaning.
+
+Behavioral changes:
+
+| Where | Before (v2.6) | After (v2.7) |
+|-------|---------------|--------------|
+| `lastModified` of an entry | `new Date()` — the time the sitemap was generated | `item.updated_at`, the content's last change |
+| Item without a usable `updated_at` | `new Date()` | no `lastModified` key at all |
+| `@flyo/nitro-typescript` | `^1.2.0` | `^1.5.0` (first version carrying `updated_at`) |
+
+---
+
 # Upgrading from v2.5 to v2.6
 
 > This guide is written for both humans and AI coding agents. Steps are explicit
