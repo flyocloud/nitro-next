@@ -1,3 +1,98 @@
+# Upgrading from v2.7 to v2.8
+
+> This guide is written for both humans and AI coding agents. Steps are explicit
+> enough to follow by hand and precise enough to apply programmatically.
+
+## Overview
+
+v2.8 makes schema.org structured data automatic. **There is nothing you must
+do** — no export was removed, no signature changed.
+
+Flyo delivers a JSON-LD document with both content types: `page.jsonld` on the
+pages endpoint (typically a `WebPage`) and `entity.jsonld` on the entities
+endpoint. Until now the library could only render the entity one, and only if
+you wired `<NitroEntityJsonLd />` into your entity route by hand — the page
+document had no component at all, so page-level structured data never reached
+the HTML.
+
+Now:
+
+- **`NitroPage` renders `page.jsonld`** — so `nitroPageRoute` and every route
+  rendering `<NitroPage>` emit the page's document.
+- **`nitroEntityRoute` renders `entity.jsonld`** — so entity detail routes emit
+  the entity's document without a component in `render`.
+
+## What to do
+
+### Optional: drop the manual `<NitroEntityJsonLd />`
+
+If your entity routes render it themselves, the line is now redundant. It stays
+**harmless** if you leave it — the same document is never emitted twice in one
+request — but you can clean it up:
+
+```diff
+  import {
+    nitroEntityRoute,
+    nitroEntityGenerateMetadata,
+-   NitroEntityJsonLd,
+    type EntityResolver
+  } from '@flyo/nitro-next/server';
+
+  export default nitroEntityRoute(flyo, {
+    resolver,
+    render: (entity) => (
+      <>
+-       <NitroEntityJsonLd entity={entity} />
+        <FlyoMetric entity={entity} />
+        <h1>{entity.entity?.entity_title}</h1>
+      </>
+    ),
+  });
+```
+
+### Check the document in Flyo, not in your code
+
+If a page or entity emits no `<script type="application/ld+json">`, its document
+is empty in Flyo. The API sends `{}` (pages) / `[]` (entities) when none is
+maintained, and neither is rendered — an empty `{}` script would only confuse
+crawlers.
+
+## What changed
+
+### Empty documents no longer render
+
+`NitroEntityJsonLd` used to test `if (!entity.jsonld)`, which never fired: the
+entities endpoint sends `[]` — truthy — when no document is set. In practice
+that only mattered once emission became automatic, but the check is now a real
+emptiness test (empty object, empty array, blank string), so no page ships an
+empty JSON-LD script.
+
+### A document is emitted at most once per request
+
+Identical documents are collapsed, which is what makes a leftover
+`<NitroEntityJsonLd />` harmless. Documents that *differ* are all emitted, so
+structured data you add yourself is never suppressed.
+
+## API changes in v2.8
+
+Additive only:
+
+| Export | What it does |
+|--------|--------------|
+| `NitroPageJsonLd` | Renders a page's `jsonld` document. Rendered by `NitroPage` automatically; use it in custom page routes that don't render `NitroPage`. |
+| `NitroJsonLd` | Renders any JSON-LD document you supply — for structured data of your own (`BreadcrumbList`, `Organization`, …). |
+
+Behavioral changes:
+
+| Where | Before (v2.7) | After (v2.8) |
+|-------|---------------|--------------|
+| `page.jsonld` | never rendered | rendered by `NitroPage` |
+| `entity.jsonld` | rendered only via a manual `<NitroEntityJsonLd />` | rendered by `nitroEntityRoute` |
+| Empty `jsonld` (`{}` / `[]`) | would render `<script>{}</script>` | renders nothing |
+| The same document rendered twice in one request | two `<script>` tags | one |
+
+---
+
 # Upgrading from v2.6 to v2.7
 
 > This guide is written for both humans and AI coding agents. Steps are explicit

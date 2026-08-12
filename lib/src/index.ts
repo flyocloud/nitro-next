@@ -5,6 +5,8 @@ export {
   NitroPage,
   NitroSlot,
   NitroDebugInfo,
+  NitroJsonLd,
+  NitroPageJsonLd,
   NitroEntityJsonLd,
   // Initialization
   initNitro,

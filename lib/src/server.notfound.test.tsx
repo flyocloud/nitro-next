@@ -11,33 +11,12 @@
  * receives the awaited links as `initial`.
  *
  * At runtime Next.js scopes React `cache()` per request, so the layout and the
- * page see the *same* store instance. Jest has no request scope, so here we mock
- * `cache()` with a per-module memoizer and load `./server` fresh per test
- * (`jest.isolateModules`) to reproduce that shared-per-request store.
+ * page see the *same* store instance. Jest has no request scope, so jest.setup.js
+ * stands in for `cache()` with a memoizer created per module load; loading
+ * `./server` fresh per test (`jest.isolateModules`) then reproduces that
+ * shared-per-request store.
  */
 import type { Entity } from '@flyo/nitro-typescript';
-
-// Memoize `cache(fn)` by argument identity, once per module load. Combined with
-// `jest.isolateModules` below this gives each test one fresh store shared
-// between the route helpers (publish) and the switcher (read).
-jest.mock('react', () => {
-  const actual = jest.requireActual('react');
-  return {
-    ...actual,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    cache: (fn: (...args: any[]) => any) => {
-      const memo = new Map<string, unknown>();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (...args: any[]) => {
-        const key = JSON.stringify(args);
-        if (!memo.has(key)) {
-          memo.set(key, fn(...args));
-        }
-        return memo.get(key);
-      };
-    },
-  };
-});
 
 jest.mock('next/navigation', () => ({
   notFound: jest.fn(() => {

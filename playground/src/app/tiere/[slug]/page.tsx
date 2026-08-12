@@ -1,7 +1,6 @@
-import { 
-    nitroEntityRoute, 
-    nitroEntityGenerateMetadata, 
-    NitroEntityJsonLd,
+import {
+    nitroEntityRoute,
+    nitroEntityGenerateMetadata,
     type EntityResolver
 } from "@flyo/nitro-next/server";
 import { flyo } from "@/flyo.config";
@@ -22,9 +21,10 @@ export const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
 export default nitroEntityRoute(flyo, {
     resolver,
     render: (entity: Entity) => {
+      // The entity's JSON-LD document is rendered by nitroEntityRoute itself —
+      // nothing to wire up here.
       return (
         <div>
-          <NitroEntityJsonLd entity={entity} />
           <FlyoMetric entity={entity} />
           <h1>{entity.entity?.entity_title}</h1>
           <p>{entity.entity?.entity_teaser}</p>

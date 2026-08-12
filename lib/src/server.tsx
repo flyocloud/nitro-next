@@ -696,17 +696,15 @@ function createCachedEntityResolver<T>(
 // ─── Server Components ───────────────────────────────────────────────────────
 
 /**
- * NitroDebugInfo Component
+ * Build the debug line for {@link NitroDebugInfo}, or the "not initialized"
+ * marker when the config is unreachable.
  *
- * Async server component that outputs debug information as an HTML comment.
- * Resolves config internally from the flyo instance.
- *
- * @example
- * ```tsx
- * <NitroDebugInfo flyo={flyo} />
- * ```
+ * Separate from the component on purpose: the `try` has to wrap the config
+ * fetch and the string building only. Returning JSX from inside it would not
+ * catch render errors anyway — React renders the element later, outside this
+ * call stack — which is what `react-hooks/error-boundaries` flags.
  */
-export async function NitroDebugInfo({ flyo }: { flyo: FlyoInstance }) {
+async function buildDebugInfo(flyo: FlyoInstance): Promise<string> {
   try {
     const config = await flyo.getNitroConfig();
     const { state } = flyo;
@@ -751,37 +749,151 @@ export async function NitroDebugInfo({ flyo }: { flyo: FlyoInstance }) {
       debugInfoParts.push(`release:${version}`);
     }
 
-    const debugInfo = debugInfoParts.join(" | ");
-
-    return (
-      <template dangerouslySetInnerHTML={{ __html: `<!-- ${debugInfo} -->` }} suppressHydrationWarning />
-    );
+    return debugInfoParts.join(" | ");
   } catch {
-    return <template dangerouslySetInnerHTML={{ __html: `<!-- nitro-debug: not initialized -->` }} suppressHydrationWarning />;
+    return 'nitro-debug: not initialized';
   }
 }
 
 /**
- * Renders a JSON-LD structured data script tag from an Entity's jsonld field.
- * Safely escapes HTML to prevent XSS.
+ * NitroDebugInfo Component
+ *
+ * Async server component that outputs debug information as an HTML comment.
+ * Resolves config internally from the flyo instance.
+ *
+ * @example
+ * ```tsx
+ * <NitroDebugInfo flyo={flyo} />
+ * ```
  */
-export function NitroEntityJsonLd({ entity }: { entity: Entity }) {
-  if (!entity?.jsonld) {
+export async function NitroDebugInfo({ flyo }: { flyo: FlyoInstance }) {
+  const debugInfo = await buildDebugInfo(flyo);
+
+  return (
+    <template dangerouslySetInnerHTML={{ __html: `<!-- ${debugInfo} -->` }} suppressHydrationWarning />
+  );
+}
+
+// ─── JSON-LD ─────────────────────────────────────────────────────────────────
+
+/**
+ * Reduce an API `jsonld` field to a document worth rendering, or `undefined`.
+ *
+ * "No JSON-LD configured" does not arrive as `null`: the pages endpoint sends an
+ * empty object (`{}`) and the entities endpoint an empty array (`[]`) — both
+ * truthy. Without this check every page would ship a `<script>` containing `{}`.
+ * A non-empty array is kept: JSON-LD legitimately allows a list of nodes.
+ */
+function normalizeJsonLd(value: unknown): object | undefined {
+  // Defensive: an un-decoded document (a JSON string) still renders.
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+    try {
+      return normalizeJsonLd(JSON.parse(trimmed));
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value : undefined;
+  }
+
+  if (value !== null && typeof value === 'object') {
+    return Object.keys(value).length > 0 ? value : undefined;
+  }
+
+  return undefined;
+}
+
+// A page's / entity's JSON-LD is emitted automatically (by `NitroPage` and
+// `nitroEntityRoute`), while projects written against earlier versions still
+// render `<NitroEntityJsonLd entity={entity} />` inside their entity `render`.
+// Both produce the *same* document, so each serialized document is claimed once
+// per request and the first renderer wins: upgrading keeps emitting exactly one
+// `<script>` per document, with no code change. Documents that genuinely differ
+// (a page's `WebPage` plus an entity's `Thing`, say) are all emitted.
+//
+// `cache()` scopes the claim set to a single request, the same mechanism the
+// language-links store above relies on. Outside a request scope React's `cache()`
+// memoizes nothing and hands back a fresh set per call, so nothing is ever
+// suppressed across requests — the safe direction to fail in.
+const claimedJsonLd = cache((): Set<string> => new Set<string>());
+
+/** `true` when this exact document has not been claimed yet in this request. */
+function claimJsonLd(serialized: string): boolean {
+  const claimed = claimedJsonLd();
+
+  if (claimed.has(serialized)) {
+    return false;
+  }
+
+  claimed.add(serialized);
+  return true;
+}
+
+/**
+ * Renders a `<script type="application/ld+json">` for any JSON-LD document —
+ * the building block behind {@link NitroPageJsonLd} and
+ * {@link NitroEntityJsonLd}. Renders nothing for an empty document (the API
+ * sends `{}` / `[]` when none is configured) or one already emitted in this
+ * request. Escapes `<` so the document cannot break out of the script tag.
+ *
+ * @example
+ * ```tsx
+ * <NitroJsonLd data={{ '@context': 'https://schema.org', '@type': 'Organization', name: 'Flyo' }} />
+ * ```
+ */
+export function NitroJsonLd({ data }: { data: unknown }) {
+  const jsonLd = normalizeJsonLd(data);
+
+  if (!jsonLd) {
     return null;
   }
 
-  return (
-    <script
-      type="application/ld+json"
-      dangerouslySetInnerHTML={{
-        __html: JSON.stringify(entity.jsonld).replace(/</g, '\\u003c'),
-      }}
-    />
-  );
+  const serialized = JSON.stringify(jsonLd).replace(/</g, '\\u003c');
+
+  if (!claimJsonLd(serialized)) {
+    return null;
+  }
+
+  return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serialized }} />;
+}
+
+/**
+ * Renders the page's JSON-LD structured data (`page.jsonld`, e.g. a `WebPage`
+ * document maintained in Flyo).
+ *
+ * {@link NitroPage} renders this automatically, so pages resolved through
+ * `nitroPageRoute` need nothing. Render it yourself in a **custom page route**
+ * that renders blocks by hand instead of via `NitroPage`.
+ */
+export function NitroPageJsonLd({ page }: { page: Page }) {
+  return <NitroJsonLd data={page?.jsonld} />;
+}
+
+/**
+ * Renders the entity's JSON-LD structured data (`entity.jsonld`).
+ *
+ * {@link nitroEntityRoute} renders this automatically, so entity detail routes
+ * built with it need nothing — an existing `<NitroEntityJsonLd />` in a
+ * `render` function stays harmless (the document is only emitted once per
+ * request). Render it yourself in a **custom entity route** that does not go
+ * through `nitroEntityRoute`.
+ */
+export function NitroEntityJsonLd({ entity }: { entity: Entity }) {
+  return <NitroJsonLd data={entity?.jsonld} />;
 }
 
 /**
  * NitroPage renders all blocks from a Flyo page.
+ *
+ * It also renders the page's structured data ({@link NitroPageJsonLd}), the
+ * page-level counterpart of the entity JSON-LD rendered by
+ * {@link nitroEntityRoute}.
  *
  * On multilingual sites it also renders {@link NitroLanguageLinks} with the
  * page's language links (derived from `page.translation` and the page's
@@ -795,20 +907,27 @@ export function NitroPage({
   page: Page;
   flyo: FlyoInstance;
 }) {
-  if (!page?.json || !Array.isArray(page.json)) {
-    return null;
-  }
+  // Rendered even for a page without blocks — it describes the page, not its
+  // content.
+  const structuredData = <NitroPageJsonLd page={page} />;
 
-  const blocks = page.json.map((block: Block, index: number) => (
-    <NitroBlock
-      key={block.uid || index}
-      block={block}
-      flyo={flyo}
-    />
-  ));
+  const blocks = Array.isArray(page?.json)
+    ? page.json.map((block: Block, index: number) => (
+        <NitroBlock
+          key={block.uid || index}
+          block={block}
+          flyo={flyo}
+        />
+      ))
+    : null;
 
   if (!flyo.isMultilingual()) {
-    return <>{blocks}</>;
+    return (
+      <>
+        {structuredData}
+        {blocks}
+      </>
+    );
   }
 
   const languageLinks = getLanguageLinks(page.translation, {
@@ -819,6 +938,7 @@ export function NitroPage({
   return (
     <>
       <NitroLanguageLinks links={languageLinks} />
+      {structuredData}
       {blocks}
     </>
   );
@@ -994,6 +1114,9 @@ export function nitroPageGenerateStaticParams(flyo: FlyoInstance) {
  * Create an entity route handler with a custom resolver.
  * Returns a Next.js page component function.
  *
+ * The entity's structured data ({@link NitroEntityJsonLd}) is rendered
+ * automatically, the same way {@link NitroPage} renders the page's.
+ *
  * @example
  * ```tsx
  * import { flyo } from '@/flyo.config';
@@ -1025,8 +1148,17 @@ export function nitroEntityRoute<T = any>(
 
     const content = options.render ? options.render(entity) : <div>{entity.entity?.entity_title}</div>;
 
+    // Rendered ahead of the content, so a `<NitroEntityJsonLd />` left over in a
+    // `render` function is the duplicate that gets skipped, not this one.
+    const structuredData = <NitroEntityJsonLd entity={entity} />;
+
     if (!flyo.isMultilingual()) {
-      return content;
+      return (
+        <>
+          {structuredData}
+          {content}
+        </>
+      );
     }
 
     // Same as NitroPage: render the entity's language links so a switcher in
@@ -1039,6 +1171,7 @@ export function nitroEntityRoute<T = any>(
     return (
       <>
         <NitroLanguageLinks links={languageLinks} />
+        {structuredData}
         {content}
       </>
     );

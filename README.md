@@ -585,10 +585,9 @@ Nitro provides flexible helpers for creating entity detail pages with any route 
 Create `app/blog/[slug]/page.tsx`:
 
 ```tsx
-import { 
-  nitroEntityRoute, 
-  nitroEntityGenerateMetadata, 
-  NitroEntityJsonLd,
+import {
+  nitroEntityRoute,
+  nitroEntityGenerateMetadata,
   type EntityResolver
 } from "@flyo/nitro-next/server";
 import { flyo } from "@/flyo.config";
@@ -611,7 +610,6 @@ export default nitroEntityRoute(flyo, {
   resolver,
   render: (entity: Entity) => (
     <>
-      <NitroEntityJsonLd entity={entity} />
       <FlyoMetric entity={entity} />
       <article>
         <h1>{entity.entity?.entity_title}</h1>
@@ -627,10 +625,9 @@ export default nitroEntityRoute(flyo, {
 Create `app/items/[uniqueid]/page.tsx`:
 
 ```tsx
-import { 
-  nitroEntityRoute, 
-  nitroEntityGenerateMetadata, 
-  NitroEntityJsonLd,
+import {
+  nitroEntityRoute,
+  nitroEntityGenerateMetadata,
   type EntityResolver
 } from "@flyo/nitro-next/server";
 import { flyo } from "@/flyo.config";
@@ -648,7 +645,6 @@ export default nitroEntityRoute(flyo, {
   resolver,
   render: (entity: Entity) => (
     <>
-      <NitroEntityJsonLd entity={entity} />
       <FlyoMetric entity={entity} />
       <div>
         <h1>{entity.entity?.entity_title}</h1>
@@ -663,10 +659,9 @@ export default nitroEntityRoute(flyo, {
 Works with any route parameter name - create `app/products/[id]/page.tsx`:
 
 ```tsx
-import { 
-  nitroEntityRoute, 
-  nitroEntityGenerateMetadata, 
-  NitroEntityJsonLd,
+import {
+  nitroEntityRoute,
+  nitroEntityGenerateMetadata,
   type EntityResolver
 } from "@flyo/nitro-next/server";
 import { flyo } from "@/flyo.config";
@@ -687,7 +682,6 @@ export default nitroEntityRoute(flyo, {
   resolver,
   render: (entity: Entity) => (
     <>
-      <NitroEntityJsonLd entity={entity} />
       <FlyoMetric entity={entity} />
       <div>
         <h1>{entity.entity?.entity_title}</h1>
@@ -962,6 +956,71 @@ SITE_URL=https://yourdomain.com
 
 Next.js will automatically serve the sitemap at `/sitemap.xml`.
 
+### 14. Structured Data (JSON-LD)
+
+Flyo delivers a schema.org document with **both** content types: a page-level one on the pages endpoint (`page.jsonld`, typically a `WebPage`) and an entity-level one on the entities endpoint (`entity.jsonld`, e.g. a `Thing`, `Event`, `Product`). Maintain them in Flyo — the integration renders them.
+
+**Nothing to wire up.** Both are emitted automatically:
+
+| Route | Emitted by | Document |
+|-------|-----------|----------|
+| `nitroPageRoute` / any route rendering `<NitroPage>` | `NitroPage` | `page.jsonld` |
+| `nitroEntityRoute` | the route itself | `entity.jsonld` |
+
+The result is a `<script type="application/ld+json">` in the page body — where Google expects it, and where Next.js has no `metadata` field for it:
+
+```html
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"About Us"}</script>
+```
+
+Details worth knowing:
+
+- **No document → no script.** "Nothing configured" arrives as an *empty container*, not `null` (`{}` from the pages endpoint, `[]` from the entities endpoint), and neither is rendered.
+- **A document is never emitted twice per request.** So an `<NitroEntityJsonLd entity={entity} />` left over in an entity `render` from an earlier version stays harmless — see [UPGRADE.md](UPGRADE.md).
+- **`<` is escaped** as `\u003c`, so a document can never close the script tag or inject markup.
+- **Arrays pass through**, since JSON-LD allows a list of nodes.
+
+#### Adding your own structured data
+
+Additional documents are always emitted — only *identical* ones are collapsed. Use `NitroJsonLd` for anything you build yourself:
+
+```tsx
+import { NitroJsonLd } from '@flyo/nitro-next/server';
+
+export default nitroEntityRoute(flyo, {
+  resolver,
+  render: (entity) => (
+    <>
+      {/* entity.jsonld is already emitted by the route */}
+      <NitroJsonLd
+        data={{
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: entity.breadcrumb?.map((crumb, index) => ({
+            '@type': 'ListItem',
+            position: index + 1,
+            name: crumb.title,
+            item: crumb.href,
+          })),
+        }}
+      />
+      <h1>{entity.entity?.entity_title}</h1>
+    </>
+  ),
+});
+```
+
+#### Custom routes
+
+A route that doesn't go through `NitroPage` / `nitroEntityRoute` renders the component itself:
+
+```tsx
+import { NitroPageJsonLd, NitroEntityJsonLd } from '@flyo/nitro-next/server';
+
+<NitroPageJsonLd page={page} />       // page.jsonld
+<NitroEntityJsonLd entity={entity} /> // entity.jsonld
+```
+
 ## API Reference
 
 ### Client Exports
@@ -1062,7 +1121,7 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
   import { NitroLanguageLinks } from '@flyo/nitro-next/server';
   <NitroLanguageLinks links={links} />
   ```
-- **`NitroPage`** – Server component that renders a whole Nitro page by delegating to `NitroBlock` for each block, and (on multilingual sites) publishes the page's language links via `NitroLanguageLinks`. Requires `flyo` prop.
+- **`NitroPage`** – Server component that renders a whole Nitro page by delegating to `NitroBlock` for each block, renders the page's structured data via `NitroPageJsonLd`, and (on multilingual sites) publishes the page's language links via `NitroLanguageLinks`. Requires `flyo` prop.
   ```tsx
   import { NitroPage } from '@flyo/nitro-next/server';
   <NitroPage page={page} flyo={flyo} />
@@ -1077,9 +1136,16 @@ Next.js will automatically serve the sitemap at `/sitemap.xml`.
   import { NitroSlot } from '@flyo/nitro-next/server';
   <NitroSlot slot={block.slots?.content} flyo={flyo} />
   ```
-- **`NitroEntityJsonLd`** – Server component that renders a JSON-LD `<script>` tag from an Entity's `jsonld` field for structured data / SEO. Safely escapes HTML to prevent XSS.
+- **`NitroPageJsonLd` / `NitroEntityJsonLd`** – Render the `jsonld` document of a page / an entity as a `<script type="application/ld+json">`. **Rendered automatically** by `NitroPage` and `nitroEntityRoute` — render them by hand only on custom routes that don't use those. Empty documents (the API sends `{}` for pages, `[]` for entities when none is set) render nothing, and a document already emitted in the same request is not repeated. See [Structured data (JSON-LD)](#14-structured-data-json-ld).
   ```tsx
-  import { NitroEntityJsonLd } from '@flyo/nitro-next/server';
+  import { NitroPageJsonLd, NitroEntityJsonLd } from '@flyo/nitro-next/server';
+  <NitroPageJsonLd page={page} />
+  <NitroEntityJsonLd entity={entity} />
+  ```
+- **`NitroJsonLd`** – Renders any JSON-LD document you supply, with the same emptiness and duplicate handling. Use it for structured data of your own (a `BreadcrumbList`, an `Organization` in the layout, …).
+  ```tsx
+  import { NitroJsonLd } from '@flyo/nitro-next/server';
+  <NitroJsonLd data={{ '@context': 'https://schema.org', '@type': 'Organization', name: 'Flyo' }} />
   ```
 - **`NitroDebugInfo`** – Async server component that outputs debug information as an HTML comment. Requires `flyo` prop.
   ```tsx

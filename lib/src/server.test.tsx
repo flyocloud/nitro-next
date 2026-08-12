@@ -74,16 +74,19 @@ jest.mock('@flyo/nitro-typescript', () => {
               description: 'Learn about us',
               image: 'https://example.com/about.jpg'
             },
-            json: []
+            json: [],
+            jsonld: { '@context': 'https://schema.org', '@type': 'WebPage', name: 'About Us' },
           });
         }
         if (slug === 'no-meta-image') {
           // The API sends `image: false` — not an empty string — when a page
-          // has no meta image set.
+          // has no meta image set, and an empty object when it carries no
+          // JSON-LD document.
           return Promise.resolve({
             title: 'No Meta Image',
             meta_json: { title: 'No Meta Image', description: '', image: false },
-            json: []
+            json: [],
+            jsonld: {},
           });
         }
         return Promise.reject(new Error('Page not found'));
@@ -547,6 +550,17 @@ describe('Page Route Factories', () => {
       });
 
       expect(result).toBeDefined();
+    });
+
+    it('emits the page JSON-LD document the API delivered', async () => {
+      const pageHandler = nitroPageRoute(flyo);
+      const { container } = render(
+        await pageHandler({ params: Promise.resolve({ slug: ['about'] }) }),
+      );
+
+      expect(
+        container.querySelector('script[type="application/ld+json"]')?.innerHTML,
+      ).toBe('{"@context":"https://schema.org","@type":"WebPage","name":"About Us"}');
     });
 
     it('throws not found for invalid page', async () => {
