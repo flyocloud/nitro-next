@@ -1,3 +1,32 @@
+# Upgrading to v2.8.2
+
+**Fixes missing `og:image` and `twitter:image`.** Update the package — there is
+nothing to change in your code:
+
+```bash
+npm install @flyo/nitro-next@^2.8.2
+```
+
+The cause was in a dependency, not in this library. `@flyo/nitro-typescript@1.5.0`
+discarded `meta_json.image` while deserializing the pages response: the field is
+declared in the OpenAPI spec as `oneOf: [string, boolean]` (a URL when a meta
+image is set, `false` when it is not), and the generator that produced 1.5.0 had
+no code path for a `oneOf` of primitives, so every image URL arrived as an empty
+object. `buildSocialImageUrl()` correctly rejected the non-string and skipped the
+tags, so pages rendered a complete `<head>` — title, description, canonical,
+hreflang, `og:title`, `og:description` — with both image tags silently absent.
+
+v2.8.2 raises the dependency floor to `@flyo/nitro-typescript@^1.6.0`, which
+deserializes the field correctly. If you pin `@flyo/nitro-typescript` yourself,
+raise it too — a `^1.4.0` or `^1.5.0` range resolves to the broken 1.5.0. Details
+in the [SDK upgrade guide](https://github.com/flyocloud/nitro-typescript-sdk/blob/main/UPGRADE.md).
+
+Verify with `curl -s https://your-site.test | grep 'og:image'` — a page whose
+`meta_json.image` is set in Flyo should now emit
+`<meta property="og:image" content="…?w=1200&h=630&format=jpg">`.
+
+---
+
 # Upgrading from v2.7 to v2.8
 
 > This guide is written for both humans and AI coding agents. Steps are explicit
