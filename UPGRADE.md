@@ -1,3 +1,56 @@
+# Upgrading to v2.8.3
+
+**A dependency bump with no API change.** Update the package — there is nothing
+to change in your code:
+
+```bash
+npm install @flyo/nitro-next@^2.8.3
+```
+
+v2.8.3 raises the dependency floor to `@flyo/nitro-typescript@^1.7.0`, which
+regenerates the SDK against OpenAPI document 2.30 (was 2.28.1). No endpoint,
+parameter, or method signature changed, and this library's own surface is
+untouched — every export, prop, and helper behaves exactly as in v2.8.2.
+
+Two SDK types did change. They matter only if you touch the SDK's own models —
+either by importing from `@flyo/nitro-typescript` directly, or through the raw
+API accessors (`flyo.getNitroSitemap()`, `getNitroEntities()`, `getNitroPages()`,
+`getNitroSearch()`), which hand you the generated types unchanged:
+
+- **The `Routes` type is gone.** 2.30 inlines the schema, so the generator no
+  longer emits it. `Routes`, `RoutesFromJSON`, `RoutesToJSON`, and
+  `instanceOfRoutes` no longer exist. Replace a `Routes` annotation with the
+  inline type — the value it described is unchanged:
+
+  ```diff
+  - import type { Routes } from '@flyo/nitro-typescript';
+  - function firstRoute(routes: Routes) { … }
+  + function firstRoute(routes: { [key: string]: any }) { … }
+  ```
+
+- **`routes` is now `{ [key: string]: any }`** on both `EntityInterface` and
+  `EntityinterfaceInner`. On `EntityInterface` it used to be a map of *strings*,
+  which was wrong: the map always carries a boolean `_empty` alongside the URL
+  paths. Reading a path (`routes.detail`) still type-checks and still returns a
+  string, but you lose `string` inference on the values, so add a guard where the
+  key is dynamic:
+
+  ```ts
+  const path = routes[key];
+  if (typeof path !== 'string') return undefined;
+  ```
+
+  One runtime difference: an explicit `"_empty": null` from the API is now
+  preserved instead of being coerced to `undefined`. Use `routes._empty == null`
+  if you need to treat both alike.
+
+`@flyo/nitro-next` itself reads none of this. Sitemap URLs have come from the
+item's `href` since v2.6.0 (see "If you relied on the old route/slug fallback"
+below), so the library never touches `routes` and never re-exported `Routes`.
+Details in the [SDK upgrade guide](https://github.com/flyocloud/nitro-typescript-sdk/blob/main/UPGRADE.md).
+
+---
+
 # Upgrading to v2.8.2
 
 **Fixes missing `og:image` and `twitter:image`.** Update the package — there is
