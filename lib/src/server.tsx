@@ -305,7 +305,6 @@ export function initNitro({
     }
 
     const items = await sitemapApi.sitemap({ lang: sitemapLang });
-    const cleanBaseUrl = state.baseUrl.endsWith('/') ? state.baseUrl.slice(0, -1) : state.baseUrl;
 
     // The API resolves the final URL path of every sitemap item into `href`
     // (all language variants included), so we no longer stitch a path together
@@ -318,9 +317,9 @@ export function initNitro({
         return entries;
       }
 
-      const url = /^https?:\/\//i.test(href)
-        ? href
-        : `${cleanBaseUrl}${href.startsWith('/') ? href : `/${href}`}`;
+      // Resolved exactly like the canonical and hreflang URLs, so the sitemap
+      // and the `<head>` of a page never disagree about its address.
+      const url = resolveContentUrl(href, state.baseUrl);
 
       // `updated_at` is when the content of that URL last actually changed, so
       // it is the honest `lastmod`. Items that ship without one are emitted
@@ -599,31 +598,91 @@ const readEnv = (key: string, fallback = ""): string => {
 };
 
 /**
+ * Resolve a CMS `href` into the URL that goes into the metadata.
+ *
+ * An absolute href is kept as it is; a path gets its leading slash and — when
+ * `initNitro({ baseUrl })` is configured — the site origin, so canonical and
+ * hreflang tags carry the fully qualified URLs search engines expect, matching
+ * what `flyo.sitemap()` emits for the same content. Without a `baseUrl` the
+ * path is returned unchanged and Next.js resolves it against `metadataBase`.
+ */
+function resolveContentUrl(href: string, baseUrl?: string | null): string {
+  if (/^https?:\/\//i.test(href)) {
+    return href;
+  }
+
+  const path = href.startsWith('/') ? href : `/${href}`;
+
+  if (!baseUrl) {
+    return path;
+  }
+
+  const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+
+  return `${cleanBaseUrl}${path}`;
+}
+
+/**
+ * `href` is the API's generic link field, and a page's `type` can be `email`,
+ * `tel` or `file` — those carry a `mailto:` / `tel:` / download target instead
+ * of a document URL, and only a document URL can be a canonical.
+ */
+function isDocumentHref(href: string): boolean {
+  const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(href);
+
+  return !scheme || /^https?$/i.test(scheme[1]);
+}
+
+/**
  * Build Next.js `alternates` (hreflang + canonical) from a page's or entity's
- * `translation[]`. Returns `undefined` when there are no linked translations.
+ * `translation[]`, falling back to the content's own `href` for the canonical.
+ * Returns `undefined` when neither yields anything.
  */
 function buildLanguageAlternates(
   translations: Translation[] | undefined,
-  currentLang?: string,
+  options: {
+    /** The active locale — its translation becomes the canonical. */
+    currentLang?: string;
+    /**
+     * The content's own href (`page.href`), used as the canonical whenever the
+     * translations produce none: a single-language site has an empty
+     * `translation[]`, and a multilingual one can be missing the entry for the
+     * locale currently being rendered.
+     */
+    href?: string;
+    /** `initNitro({ baseUrl })`, so the emitted URLs are fully qualified. */
+    baseUrl?: string | null;
+  } = {},
 ): Metadata['alternates'] | undefined {
+  const { currentLang, href, baseUrl } = options;
   const languages: Record<string, string> = {};
   let canonical: string | undefined;
 
   for (const t of translations ?? []) {
     const shortcode = t.language?.shortcode;
-    if (shortcode && t.href) {
-      languages[shortcode] = t.href;
+    const translationHref = t.href?.trim();
+    if (shortcode && translationHref) {
+      languages[shortcode] = resolveContentUrl(translationHref, baseUrl);
       if (currentLang && shortcode === currentLang) {
-        canonical = t.href;
+        canonical = languages[shortcode];
       }
     }
   }
 
-  if (Object.keys(languages).length === 0) {
+  const selfHref = href?.trim();
+
+  if (!canonical && selfHref && isDocumentHref(selfHref)) {
+    canonical = resolveContentUrl(selfHref, baseUrl);
+  }
+
+  if (!canonical && Object.keys(languages).length === 0) {
     return undefined;
   }
 
-  return canonical ? { canonical, languages } : { languages };
+  return {
+    ...(canonical ? { canonical } : {}),
+    ...(Object.keys(languages).length > 0 ? { languages } : {}),
+  };
 }
 
 /**
@@ -1065,7 +1124,14 @@ export function nitroPageGenerateMetadata(flyo: FlyoInstance) {
     const ogImage = buildSocialImageUrl(image, 1200, 630);
     const twImage = buildSocialImageUrl(image, 1200, 600);
 
-    const alternates = buildLanguageAlternates(page.translation, lang);
+    // `page.href` is the page's own resolved URL, so every page gets a
+    // self-referencing canonical — not just the multilingual ones, whose
+    // canonical comes from the translation of the active locale.
+    const alternates = buildLanguageAlternates(page.translation, {
+      currentLang: lang,
+      href: page.href,
+      baseUrl: flyo.state.baseUrl,
+    });
 
     return {
       title,
@@ -1210,7 +1276,12 @@ export function nitroEntityGenerateMetadata<T = any>(
     const ogImage = buildSocialImageUrl(image, 1200, 630);
     const twImage = buildSocialImageUrl(image, 1200, 600);
 
-    const alternates = buildLanguageAlternates(entity.translation, entity.language);
+    // The entities endpoint carries no `href`, so an entity's canonical can
+    // only come from its translations.
+    const alternates = buildLanguageAlternates(entity.translation, {
+      currentLang: entity.language,
+      baseUrl: flyo.state.baseUrl,
+    });
 
     return {
       title,
