@@ -343,6 +343,8 @@ export const generateMetadata = nitroPageGenerateMetadata(flyo);
 ```
 If the existing project already has a catch-all route or route groups, inspect the routing structure first and integrate without breaking existing routes.
 
+`nitroPageGenerateMetadata` emits the title, description, Open Graph / Twitter tags **and** a self-referencing canonical URL (from the page's `href`, or the active locale's `translation[]` entry on a multilingual site) — do not hand-write `alternates.canonical` for Nitro pages. It is prefixed with the `baseUrl` from `initNitro()`; without one, the path is resolved against Next.js' `metadataBase`, which defaults to `http://localhost:3000` — so make sure `baseUrl` is configured in production.
+
 ### 8. Prepare a project WYSIWYG wrapper
 Most Flyo Nitro projects use WYSIWYG fields. Create a reusable wrapper even if there are no custom nodes yet.
 
@@ -809,7 +811,7 @@ const resolver: EntityResolver<{ lang: string; slug: string }> = async (params) 
 
 **Render the switcher links as native `<a href={l.href}>` elements — never `next/link`'s `<Link>`.** A language switch has to refresh the shared chrome (localized nav, footer, `<html lang>`) that lives in the root layout, and App Router soft navigation re-renders only the page segment — a `<Link>` switcher leaves the header/footer/`<html lang>` stuck in the old language while only the page body updates. A plain `<a>` forces a full-document navigation and a fresh server render in the new locale. Keep the ordinary nav links in the layout as `<Link>` (soft nav is correct there, since the nav is identical within a language).
 
-`hreflang` alternates are emitted automatically by `nitroPageGenerateMetadata` / `nitroEntityGenerateMetadata`.
+`hreflang` alternates are emitted automatically by `nitroPageGenerateMetadata` / `nitroEntityGenerateMetadata`, and so is the canonical of each language variant (the `translation[]` entry of the locale being rendered).
 
 See the "Multilanguage (i18n)" section of the README for full details.
 

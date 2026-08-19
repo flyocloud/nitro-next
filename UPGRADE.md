@@ -1,3 +1,96 @@
+# Upgrading to v2.9.0
+
+**Every page now gets a canonical URL.** Update the package — there is nothing to
+change in your code:
+
+```bash
+npm install @flyo/nitro-next@^2.9.0
+```
+
+## What changed
+
+`nitroPageGenerateMetadata` emitted a canonical only as a side effect of building
+the hreflang links: the canonical came from the `translation[]` entry matching the
+locale being rendered, so a **single-language site — where `translation[]` is
+empty — got no `<link rel="canonical">` at all**, and a multilingual page whose
+translations were missing its own locale got none either.
+
+The pages endpoint resolves every page's final URL into `page.href` (`/about-me`),
+which is exactly the self-referencing canonical those pages were missing. It is
+now used whenever the translations don't produce one:
+
+```html
+<!-- v2.8.3, single-language site -->
+<title>About me</title>
+<meta name="description" content="Field notes">
+
+<!-- v2.9.0 -->
+<title>About me</title>
+<meta name="description" content="Field notes">
+<link rel="canonical" href="https://yourdomain.com/about-me">
+```
+
+Nothing else about the metadata changed: the title, description, Open Graph and
+Twitter tags are untouched, and on a multilingual page the canonical still comes
+from the active locale's translation — `page.href` is only the fallback.
+
+Pages whose Flyo `type` is a link target rather than a document (`email`, `tel`,
+`file`) carry a `mailto:` / `tel:` / download `href`, which can never be a
+canonical — those get none, as before.
+
+## ⚠️ Check your `baseUrl`
+
+Canonical and hreflang URLs are now prefixed with the `baseUrl` from
+`initNitro()`, which makes them fully qualified — what search engines expect for
+hreflang — and identical to the URLs `flyo.sitemap()` emits for the same content:
+
+```diff
+- <link rel="alternate" hreflang="de" href="/de/ueber-uns">
++ <link rel="alternate" hreflang="de" href="https://yourdomain.com/de/ueber-uns">
+```
+
+Without a `baseUrl` the library keeps emitting the bare path and Next.js resolves
+it against [`metadataBase`](https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase),
+**which defaults to `http://localhost:3000`** — a production build would then
+advertise `<link rel="canonical" href="http://localhost:3000/about-me">`. If you
+followed the README your `flyo.config.tsx` already reads it from the environment
+(`flyo.sitemap()` throws without it), so this is only worth a look if you skipped
+the sitemap:
+
+```tsx
+export const flyo = initNitro({
+  accessToken: process.env.FLYO_ACCESS_TOKEN || '',
+  baseUrl: process.env.SITE_URL || 'http://localhost:3000',
+  // ...
+});
+```
+
+Verify with `curl -s https://your-site.test/about-me | grep canonical`.
+
+## Overriding the canonical
+
+Wrap the factory and spread its result — the same pattern as any other field:
+
+```tsx
+const nitroMetadata = nitroPageGenerateMetadata(flyo);
+
+export async function generateMetadata(props: { params: Promise<{ slug?: string[] }> }) {
+  const metadata = await nitroMetadata(props);
+  return {
+    ...metadata,
+    alternates: { ...metadata.alternates, canonical: 'https://yourdomain.com/somewhere-else' },
+  };
+}
+```
+
+## Entity detail pages
+
+Unchanged. The entities endpoint carries no `href`, so an entity's canonical
+still comes from its `translation[]` only — an entity without translations gets
+none. Set it yourself in that case, with the wrapper above.
+
+---
+
 # Upgrading to v2.8.3
 
 **A dependency bump with no API change.** Update the package — there is nothing

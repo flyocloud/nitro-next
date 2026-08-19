@@ -197,6 +197,29 @@ export const generateMetadata = nitroPageGenerateMetadata(flyo);
 // export const generateStaticParams = nitroPageGenerateStaticParams(flyo);
 ```
 
+#### What `generateMetadata` emits
+
+`nitroPageGenerateMetadata` fills the page's `<head>` from Flyo's `meta_json`: the `<title>`, the meta description, the Open Graph and Twitter card tags (title, description and the CDN-cropped meta image) — and a **canonical URL**.
+
+The canonical is self-referencing and needs no configuration. It comes from the page's own `href`, the final URL path the pages endpoint resolves for that page (`/about-me`); on a multilingual site it comes from the `translation[]` entry of the locale being rendered. With `baseUrl` set in `initNitro()` (the sitemap needs it anyway) the tag is fully qualified:
+
+```html
+<link rel="canonical" href="https://yourdomain.com/about-me">
+```
+
+Without a `baseUrl` the path is emitted as-is and Next.js resolves it against [`metadataBase`](https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase), which falls back to `http://localhost:3000` — so set one of the two in production, or the canonical points at localhost. Pages whose Flyo `type` is a link target rather than a document (`email`, `tel`, `file`) get no canonical.
+
+To override a field, wrap the factory and spread its result:
+
+```tsx
+const nitroMetadata = nitroPageGenerateMetadata(flyo);
+
+export async function generateMetadata(props: { params: Promise<{ slug?: string[] }> }) {
+  const metadata = await nitroMetadata(props);
+  return { ...metadata, alternates: { ...metadata.alternates, canonical: 'https://yourdomain.com/somewhere-else' } };
+}
+```
+
 #### Custom Page Rendering
 
 If you need to access the page data for custom logic (e.g. reading page properties, adding conditional wrappers, passing data to other components), use `flyo.pageResolveRoute()`:
@@ -899,7 +922,11 @@ If a custom route forgets `NitroLanguageLinks`, the switcher simply renders your
 
 #### hreflang (SEO)
 
-`nitroPageGenerateMetadata` and `nitroEntityGenerateMetadata` automatically emit `alternates.languages` (plus a canonical) from `translation[]`, so Next.js renders `<link rel="alternate" hreflang="…">` tags. No extra work.
+`nitroPageGenerateMetadata` and `nitroEntityGenerateMetadata` automatically emit `alternates.languages` from `translation[]`, so Next.js renders `<link rel="alternate" hreflang="…">` tags. No extra work.
+
+The **canonical** of a translated page is the `translation[]` entry of the locale being rendered — `/en/about-us` on the English page, `/de/ueber-uns` on the German one — so each language variant points at itself. A page whose `translation[]` is missing the active locale falls back to its own `href` (see [What `generateMetadata` emits](#what-generatemetadata-emits)). Entities have no `href`, so an entity detail page without translations gets no canonical.
+
+Both the canonical and the hreflang URLs are prefixed with the `baseUrl` from `initNitro()` when it is set, which makes them fully qualified — as search engines expect for hreflang — and identical to the URLs `flyo.sitemap()` emits for the same content.
 
 > **Note:** `flyo.sitemap()` emits one URL per item returned by the sitemap endpoint. In a multilingual setup that endpoint returns **all** language variants of every page and entity (regardless of the configured `lang`), so the generated sitemap covers every locale.
 
