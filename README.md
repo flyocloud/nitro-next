@@ -54,7 +54,9 @@ import { HeroBanner } from './components/HeroBanner';
 import { Text } from './components/Text';
 
 const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
-const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
+// Public on purpose: live editing is not a secret, and only NEXT_PUBLIC_*
+// variables reach the browser — see 15. Environment Detection.
+const liveEdit = process.env.NEXT_PUBLIC_FLYO_LIVE_EDIT === 'true';
 const baseUrl = process.env.SITE_URL || 'http://localhost:3000';
 
 // Create the Flyo instance — import this wherever you need CMS access
@@ -1048,6 +1050,133 @@ import { NitroPageJsonLd, NitroEntityJsonLd } from '@flyo/nitro-next/server';
 <NitroEntityJsonLd entity={entity} /> // entity.jsonld
 ```
 
+### 15. Environment Detection
+
+`isProd` answers one question: **is this the live site?** Use it to gate anything
+that must not run on localhost, on a preview deployment, or while an editor is
+working in the live preview — `FlyoMetric` uses it for exactly that, and your
+analytics should too.
+
+`NODE_ENV` cannot answer it on its own. Every hosting platform builds preview,
+branch and staging deployments in production mode, so on Vercel
+`process.env.NODE_ENV === 'production'` is `true` for a pull-request preview
+exactly as it is for your domain.
+
+```tsx
+import { isProd } from '@flyo/nitro-next/client';
+```
+
+#### Example: tracking scripts
+
+Analytics counting your own editors, preview deployments and `npm run dev`
+sessions is the classic case. Render the script only when `isProd` is true:
+
+```tsx
+// components/Analytics.tsx
+import { isProd } from '@flyo/nitro-next/client';
+import Script from 'next/script';
+
+export function Analytics() {
+  if (!isProd) return null;
+
+  return (
+    <>
+      {/* Plausible */}
+      <Script defer data-domain="example.com" src="https://plausible.io/js/script.js" />
+
+      {/* …or Google Analytics 4 */}
+      <Script src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX" />
+      <Script id="ga4">{`
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-XXXXXXXXXX');
+      `}</Script>
+    </>
+  );
+}
+```
+
+Drop it into the root layout next to `NitroDebugInfo`, and it stays silent
+everywhere but the live site:
+
+```tsx
+// app/layout.tsx
+<Analytics />
+```
+
+`isProd` is a build-time constant, so `if (!isProd) return null` removes the
+scripts from the bundle entirely on non-production builds — nothing to
+tree-shake around, and no consent-unaware pixel firing from a preview URL.
+
+The same guard works for GTM, Meta/LinkedIn pixels, Hotjar, error reporting with
+a paid event quota — anything you don't want triggered by content editing.
+
+#### How it is resolved
+
+`isProd` takes the first signal that gives a clear answer:
+
+| # | Variable | Set by |
+|---|----------|--------|
+| 1 | `NEXT_PUBLIC_FLYO_LIVE_EDIT` / `FLYO_LIVE_EDIT` | you — `true` means an editor deployment, never production |
+| 2 | `NEXT_PUBLIC_VERCEL_ENV` | **Vercel**, automatically (`production` \| `preview` \| `development`) |
+| 3 | `NEXT_PUBLIC_CONTEXT` | **Netlify**, opt-in: `NEXT_PUBLIC_CONTEXT=$CONTEXT next build` |
+| 4 | `NEXT_PUBLIC_ENV` | the generic convention used by other platforms |
+| 5 | `NODE_ENV` | Next.js — the last-resort fallback |
+
+For the markers, `production` and `prod` mean production, while `preview`,
+`staging`, `deploy-preview`, `branch-deploy`, `development`, `dev` and `test` mean
+it isn't. **Anything else — unset, empty, or a value from a platform this doesn't
+know — is ignored, so the next signal decides and the `NODE_ENV` fallback keeps
+the classic behaviour.** Only live editing or a marker that clearly names a
+non-production deployment turns `isProd` off.
+
+#### Live editing
+
+A deployment with live editing enabled serves the Flyo editor, so it is not the
+live site and `isProd` is `false` there. That's the strongest signal available: an
+editor clicking through the live preview is never a visitor.
+
+**Set the public variant** — `NEXT_PUBLIC_FLYO_LIVE_EDIT=true` next to your
+existing `FLYO_LIVE_EDIT=true`, or use it as the single source in
+`flyo.config.tsx`:
+
+```bash
+# .env.local
+FLYO_ACCESS_TOKEN=your_token
+NEXT_PUBLIC_FLYO_LIVE_EDIT=true
+```
+
+Only `NEXT_PUBLIC_*` variables are inlined into the browser bundle. `isProd` does
+read the plain `FLYO_LIVE_EDIT` too, but that value exists only while
+server-rendering — code that runs in the browser, including `FlyoMetric`'s
+tracking request and the analytics snippet above, cannot see it. Without the
+public variant an editor session on a production-marked deployment would still be
+counted.
+
+#### Other platforms
+
+On Vercel the platform side works out of the box: nothing to configure, previews
+stop counting as production. On platforms that only expose an unprefixed marker,
+map it to a public one in your build command (Netlify example above) or in
+`next.config.ts`:
+
+```ts
+// next.config.ts — Cloudflare Pages / Workers
+const nextConfig = {
+  env: {
+    NEXT_PUBLIC_ENV:
+      process.env.CF_PAGES_BRANCH === 'main' ? 'production' : 'preview',
+  },
+};
+export default nextConfig;
+```
+
+Reading public variables is what keeps this safe: they are inlined at build time,
+so a client component resolves the same value during SSR and in the browser and
+cannot produce a hydration mismatch. Server-only markers such as `VERCEL_ENV`
+would.
+
 ## API Reference
 
 ### Client Exports
@@ -1074,7 +1203,7 @@ import { NitroPageJsonLd, NitroEntityJsonLd } from '@flyo/nitro-next/server';
 
   <Image loader={FlyoCdnLoaderCrop({ aspectRatio: 1 })} … />
   ```
-- **`FlyoMetric`** – Component for tracking entity metrics in production. Automatically sends a metric tracking request to the Flyo API when in production environment and the entity has a metric API URL configured.
+- **`FlyoMetric`** – Component for tracking entity metrics in production. Automatically sends a metric tracking request to the Flyo API when the deployment is the live production one (see [Environment Detection](#15-environment-detection) — previews and editor sessions are skipped) and the entity has a metric API URL configured.
   ```tsx
   import { FlyoMetric } from '@flyo/nitro-next/client';
   ```
@@ -1082,7 +1211,7 @@ import { NitroPageJsonLd, NitroEntityJsonLd } from '@flyo/nitro-next/server';
   ```tsx
   import { EditableSection } from '@flyo/nitro-next/client';
   ```
-- **`isProd`** – Constant that checks if the current environment is production (`process.env.NODE_ENV === 'production'`).
+- **`isProd`** – Constant that checks whether this is the live production deployment — the guard for analytics, pixels and anything else that must not run on localhost, on previews or during live editing. `false` when live editing is enabled, otherwise resolved from the hosting platform's environment marker (`NEXT_PUBLIC_VERCEL_ENV` on Vercel, …) so preview and branch deployments — which also build with `NODE_ENV=production` — don't count as production. Falls back to `NODE_ENV === 'production'` when no signal gives a clear answer. See [Environment Detection](#15-environment-detection).
   ```tsx
   import { isProd } from '@flyo/nitro-next/client';
   ```

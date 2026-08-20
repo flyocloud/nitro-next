@@ -46,14 +46,14 @@ Store it in `.env.local` as:
 
 ```
 FLYO_ACCESS_TOKEN=<token>
-FLYO_LIVE_EDIT=true
+NEXT_PUBLIC_FLYO_LIVE_EDIT=true
 SITE_URL=http://localhost:3000
 ```
 For production, the environment should contain:
 
 ```
 FLYO_ACCESS_TOKEN=<production-token>
-FLYO_LIVE_EDIT=false
+NEXT_PUBLIC_FLYO_LIVE_EDIT=false
 SITE_URL=https://example.com
 ```
 Do not commit real tokens.
@@ -118,7 +118,7 @@ import { initNitro } from '@flyo/nitro-next/server';
 import { FlyoClientWrapper } from '@flyo/nitro-next/client';
 
 const accessToken = process.env.FLYO_ACCESS_TOKEN || '';
-const liveEdit = process.env.FLYO_LIVE_EDIT === 'true';
+const liveEdit = process.env.NEXT_PUBLIC_FLYO_LIVE_EDIT === 'true';
 const baseUrl = process.env.SITE_URL || 'http://localhost:3000';
 
 export const flyo = initNitro({
