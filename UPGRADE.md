@@ -1,3 +1,105 @@
+# Upgrading to v2.10.0
+
+**`FlyoMetric` gained an `enabled` prop, and `isProd` is deprecated.** Nothing
+breaks on update, but there is one line to add per entity route:
+
+```bash
+npm install @flyo/nitro-next@^2.10.0
+```
+
+## What changed
+
+`FlyoMetric` used to gate its tracking request on `isProd`, i.e.
+`process.env.NODE_ENV === 'production'`. That cannot tell the live site from a
+preview deployment: **every hosting platform builds pull-request previews, branch
+and staging deploys with `NODE_ENV=production`**, so on Vercel every deployment
+counted towards the entity statistics — previews and editor sessions included.
+
+The deployment is known in your route file, which is a server component, so the
+component now takes the answer as a prop instead of guessing:
+
+```tsx
+export function FlyoMetric({ entity, enabled = true }: { entity: Entity; enabled?: boolean })
+```
+
+`enabled` defaults to `true`, so an untouched `<FlyoMetric entity={entity} />`
+keeps sending — including from local development, where the old `NODE_ENV` check
+used to stop it. Pass the flag to get the behaviour you want.
+
+## What to do
+
+### 1. Pass `enabled` in your entity routes
+
+`flyo.state.liveEdit` is the switch you already configured in `initNitro()`. In
+the usual setup it is on for local development, editor previews and any
+deployment the editor points at — exactly the views that shouldn't count:
+
+```diff
+  export default nitroEntityRoute(flyo, {
+    resolver,
+    render: (entity: Entity) => (
+      <>
+-       <FlyoMetric entity={entity} />
++       <FlyoMetric entity={entity} enabled={!flyo.state.liveEdit} />
+        <article>
+          <h1>{entity.entity?.entity_title}</h1>
+        </article>
+      </>
+    )
+  });
+```
+
+To exclude preview deployments that do *not* run live editing, add your
+platform's marker — on Vercel `NEXT_PUBLIC_VERCEL_ENV` is exposed automatically:
+
+```tsx
+const isLive = !flyo.state.liveEdit && process.env.NEXT_PUBLIC_VERCEL_ENV === 'production';
+
+<FlyoMetric entity={entity} enabled={isLive} />
+```
+
+### 2. Replace `isProd`
+
+`isProd` still exists and still equals `process.env.NODE_ENV === 'production'`,
+but it is marked `@deprecated` (your IDE will strike it through) and will be
+removed in a future major. It was never able to answer "is this the live site?".
+
+If you used it to gate analytics or a tracking pixel, move the decision into the
+server component that renders it:
+
+```diff
+  // components/Analytics.tsx
+- 'use client';
+- import { isProd } from '@flyo/nitro-next/client';
+  import Script from 'next/script';
+
+  export function Analytics() {
+-   if (!isProd) return null;
+    return <Script defer data-domain="example.com" src="https://plausible.io/js/script.js" />;
+  }
+```
+
+```diff
+  // app/layout.tsx
++ import { flyo } from '@/flyo.config';
++
++ const isLive =
++   !flyo.state.liveEdit && process.env.NEXT_PUBLIC_VERCEL_ENV === 'production';
++
+  // …inside <body>
+- <Analytics />
++ {isLive && <Analytics />}
+```
+
+Any variable works in a server component; a check inside a `'use client'`
+component needs a `NEXT_PUBLIC_` prefixed one, because only those are inlined
+into the browser bundle.
+
+See [Production-only Code](README.md#15-production-only-code-metrics-analytics)
+in the README for the full picture.
+
+---
+
 # Upgrading to v2.9.0
 
 **Every page now gets a canonical URL.** Update the package — there is nothing to

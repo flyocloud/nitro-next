@@ -25,7 +25,7 @@ export default nitroEntityRoute(flyo, {
       // nothing to wire up here.
       return (
         <div>
-          <FlyoMetric entity={entity} />
+          <FlyoMetric entity={entity} enabled={!flyo.state.liveEdit} />
           <h1>{entity.entity?.entity_title}</h1>
           <p>{entity.entity?.entity_teaser}</p>
           <pre>{JSON.stringify(entity, null, 2)}</pre>

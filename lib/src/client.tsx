@@ -185,86 +185,29 @@ export function NitroLanguageSwitcherClient({
 const FLYO_CDN_HOST = 'storage.flyo.cloud';
 
 /**
- * Read a hosting platform's environment marker as "is this the live site?".
+ * Whether the build ran with `NODE_ENV=production`.
  *
- * Returns `undefined` for empty or unrecognised values — not sure — so the next
- * marker in the resolution chain gets its turn.
- */
-function toIsProd(value: string | undefined): boolean | undefined {
-  switch (value) {
-    case 'production':
-    case 'prod':
-      return true;
-    case 'preview':
-    case 'staging':
-    case 'deploy-preview': // Netlify: pull-request deploy
-    case 'branch-deploy': // Netlify: non-production branch deploy
-    case 'development':
-    case 'dev': // Netlify: `netlify dev`
-    case 'test':
-      return false;
-    default:
-      return undefined;
-  }
-}
-
-/**
- * Check if running on the live production deployment.
+ * @deprecated This cannot tell the live site from a preview deployment: every
+ * hosting platform builds pull-request previews, branch and staging deploys with
+ * `NODE_ENV=production` too, so on Vercel this is `true` on every deployment.
+ * It is kept only so existing imports keep compiling, and will be removed in a
+ * future major.
  *
- * `NODE_ENV` on its own can't answer this: every hosting platform builds
- * preview, branch and staging deployments with `NODE_ENV=production`, so on
- * Vercel a pull-request preview looks exactly like the live site. The platform's
- * own environment marker is therefore consulted first:
+ * Decide in your own code instead, where the deployment actually is known, and
+ * pass the result down. `flyo.state.liveEdit` is the live-edit switch you
+ * configured in `initNitro()`, so it covers local development, previews and
+ * editor sessions in one flag:
  *
- * 1. `NEXT_PUBLIC_VERCEL_ENV` — Vercel, exposed automatically for Next.js
- *    projects (`production` | `preview` | `development`).
- * 2. `NEXT_PUBLIC_CONTEXT` — Netlify's `CONTEXT`; set
- *    `NEXT_PUBLIC_CONTEXT=$CONTEXT` in the build command to opt in.
- * 3. `NEXT_PUBLIC_ENV` — the generic convention other platforms are wired to.
- * 4. `NODE_ENV` — the previous behaviour, kept as the last resort.
- *
- * Only a marker that clearly names a non-production deployment turns this off.
- * Unset or unrecognised values fall through to the next marker, so a platform
- * this doesn't know about behaves exactly as it did before.
- *
- * Live editing is deliberately not read from the environment here: it is already
- * declared once, in `initNitro({ liveEdit })`, so whoever owns that config owns
- * the variable name too. Combine the two where the instance is in scope — see
- * the example below.
- *
- * Only `NEXT_PUBLIC_*` variables are read (plus `NODE_ENV`, which Next.js treats
- * the same way): they are inlined at build time, so a client component resolves
- * the identical value on the server and in the browser and can't produce a
- * hydration mismatch. Unprefixed markers like `VERCEL_ENV` exist only on the
- * server and would do exactly that.
- *
- * Note that these are inlined statically — reading them through a variable key
- * (`process.env[name]`) would compile to `undefined` in the browser bundle,
- * hence the spelled-out reads below.
- *
- * @example Keep analytics off localhost and previews
  * ```tsx
- * 'use client';
- * import { isProd } from '@flyo/nitro-next/client';
- *
- * export function Analytics() {
- *   if (!isProd) return null;
- *   return <script defer src="https://plausible.io/js/script.js" />;
- * }
+ * // app/blog/[slug]/page.tsx — a server component
+ * <FlyoMetric entity={entity} enabled={!flyo.state.liveEdit} />
  * ```
  *
- * @example …and off editor sessions, from a server component
- * ```tsx
- * // app/layout.tsx — `flyo.state.liveEdit` is the live-edit switch you
- * // configured, whatever environment variable you feed it from.
- * {!flyo.state.liveEdit && <Analytics />}
- * ```
+ * For tracking scripts, gate the component the same way and add whichever
+ * environment marker your platform exposes — e.g.
+ * `process.env.NEXT_PUBLIC_VERCEL_ENV === 'production'` on Vercel.
  */
-export const isProd =
-  toIsProd(process.env.NEXT_PUBLIC_VERCEL_ENV) ??
-  toIsProd(process.env.NEXT_PUBLIC_CONTEXT) ??
-  toIsProd(process.env.NEXT_PUBLIC_ENV) ??
-  process.env.NODE_ENV === 'production';
+export const isProd = process.env.NODE_ENV === 'production';
 
 /**
  * Type for WYSIWYG node structure
@@ -645,29 +588,31 @@ export function FlyoCdnLoaderCrop(
 }
 
 /**
- * FlyoMetric component for tracking entity metrics in production
- * 
- * Automatically sends a metric tracking request to the Flyo API when:
- * - The deployment is the live production one (see {@link isProd}) — preview
- *   deployments are skipped so they don't pollute the statistics
- * - The entity has a metric API URL configured
+ * FlyoMetric component for tracking entity metrics
  *
- * A live-edit deployment is usually a preview one and therefore already
- * excluded. If you run live editing against production, skip the component with
- * the switch you configured: `{!flyo.state.liveEdit && <FlyoMetric … />}`.
- * 
+ * Sends a metric tracking request to the Flyo API when `enabled` is true and the
+ * entity has a metric API URL configured.
+ *
+ * The route file is a server component, so it — not this component — is where
+ * the deployment is known. Pass `enabled` from there: `flyo.state.liveEdit` is
+ * the live-edit switch you configured in `initNitro()`, which covers local
+ * development, preview deployments and editor sessions in one flag.
+ *
  * @param entity - The entity object containing entity_metric.api
- * 
+ * @param enabled - Whether to send the request. Defaults to `true`; pass `false`
+ *   on any deployment whose views shouldn't count towards the statistics.
+ *
  * @example
  * ```tsx
  * import { FlyoMetric } from '@flyo/nitro-next/client';
- * 
+ * import { flyo } from '@/flyo.config';
+ *
  * export default function BlogPost(props: RouteParams) {
  *   return nitroEntityRoute(props, {
  *     resolver,
  *     render: (entity: Entity) => (
  *       <>
- *         <FlyoMetric entity={entity} />
+ *         <FlyoMetric entity={entity} enabled={!flyo.state.liveEdit} />
  *         <article>
  *           <h1>{entity.entity?.entity_title}</h1>
  *         </article>
@@ -677,13 +622,12 @@ export function FlyoCdnLoaderCrop(
  * }
  * ```
  */
-export function FlyoMetric({ entity }: { entity: Entity }) {
+export function FlyoMetric({ entity, enabled = true }: { entity: Entity; enabled?: boolean }) {
   useEffect(() => {
-    // Only track metrics in production and if API URL is available
-    if (isProd && entity?.entity?.entity_metric?.api) {
+    if (enabled && entity?.entity?.entity_metric?.api) {
       fetch(entity.entity.entity_metric.api);
     }
-  }, [entity]);
+  }, [entity, enabled]);
 
   // This component doesn't render anything
   return null;
