@@ -88,39 +88,13 @@ describe('isProd', () => {
     expect(loadClient({ NODE_ENV: 'production', NEXT_PUBLIC_ENV: 'prod' }).isProd).toBe(true);
   });
 
-  it('is false when live editing is on, whatever the platform says', () => {
+  it('does not guess live-edit variable names — that switch lives in initNitro({ liveEdit })', () => {
     expect(
       loadClient({
         NODE_ENV: 'production',
         NEXT_PUBLIC_VERCEL_ENV: 'production',
         FLYO_LIVE_EDIT: 'true',
-      }).isProd,
-    ).toBe(false);
-
-    // The public flag is the one that survives into the browser bundle.
-    expect(
-      loadClient({
-        NODE_ENV: 'production',
-        NEXT_PUBLIC_VERCEL_ENV: 'production',
         NEXT_PUBLIC_FLYO_LIVE_EDIT: 'true',
-      }).isProd,
-    ).toBe(false);
-  });
-
-  it('ignores a live-edit flag that is off or not exactly "true"', () => {
-    expect(
-      loadClient({
-        NODE_ENV: 'production',
-        NEXT_PUBLIC_VERCEL_ENV: 'production',
-        FLYO_LIVE_EDIT: 'false',
-      }).isProd,
-    ).toBe(true);
-
-    expect(
-      loadClient({
-        NODE_ENV: 'production',
-        NEXT_PUBLIC_VERCEL_ENV: 'production',
-        NEXT_PUBLIC_FLYO_LIVE_EDIT: '1',
       }).isProd,
     ).toBe(true);
   });
@@ -183,12 +157,8 @@ describe('FlyoMetric', () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
-  it('does not track an editor session — live edit on a production deployment', () => {
-    const { FlyoMetric } = loadClient({
-      NODE_ENV: 'production',
-      NEXT_PUBLIC_VERCEL_ENV: 'production',
-      NEXT_PUBLIC_FLYO_LIVE_EDIT: 'true',
-    });
+  it('does not track a development build', () => {
+    const { FlyoMetric } = loadClient({ NODE_ENV: 'development' });
 
     render(<FlyoMetric entity={metricEntity} />);
 
