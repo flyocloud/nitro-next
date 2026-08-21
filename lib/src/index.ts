@@ -17,6 +17,8 @@ export {
   // Factory functions for Next.js app router - Entities
   nitroEntityRoute,
   nitroEntityGenerateMetadata,
+  // Error helpers
+  isApiNotFound,
   // i18n
   getLanguageLinks,
   NitroLanguageSwitcher,

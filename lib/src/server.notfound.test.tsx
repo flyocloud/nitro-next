@@ -29,13 +29,20 @@ jest.mock('next/headers', () => ({
   headers: jest.fn(async () => ({ get: () => null })),
 }));
 
+/**
+ * What `PagesApi.page()` rejects with, per test. The default mirrors the API's
+ * answer for an unknown slug: the generated client throws a `ResponseError`
+ * carrying the raw `Response`, so the status lives at `error.response.status`.
+ */
+let pageFailure: unknown = { response: { status: 404 } };
+
 jest.mock('@flyo/nitro-typescript', () => ({
   Configuration: jest.fn().mockImplementation((config) => ({ ...config })),
   ConfigApi: jest.fn().mockImplementation(() => ({
     config: jest.fn().mockResolvedValue({ pages: ['', 'about'] }),
   })),
   PagesApi: jest.fn().mockImplementation(() => ({
-    page: jest.fn().mockRejectedValue(new Error('Page not found')),
+    page: jest.fn(() => Promise.reject(pageFailure)),
   })),
   EntitiesApi: jest.fn(),
   SitemapApi: jest.fn(),
@@ -88,9 +95,10 @@ describe('route helpers settle the language-links store on notFound paths', () =
     await expect(readPublishedLinks(mod)).resolves.toEqual([]);
   });
 
-  it('pageResolveRoute publishes a fallback when the page fetch fails', async () => {
+  it('pageResolveRoute 404s (and publishes a fallback) when the CMS answers 404 for a known page', async () => {
     const mod = loadServer();
     // `about` is in the config, so the code reaches the failing PagesApi.page().
+    pageFailure = { response: { status: 404 } };
     const flyo = mod.initNitro({ accessToken: 't', defaultLocale: 'en', locales: ['en', 'de'] });
 
     await expect(
@@ -100,10 +108,29 @@ describe('route helpers settle the language-links store on notFound paths', () =
     await expect(readPublishedLinks(mod)).resolves.toEqual([]);
   });
 
+  it.each([
+    ['a 500 from the API', { response: { status: 500 } }],
+    ['a 401 from a wrong access token', { response: { status: 401 } }],
+    ['a network failure (no status at all)', new Error('fetch failed')],
+  ])('pageResolveRoute rethrows %s instead of rendering a 404', async (_label, failure) => {
+    // A CMS outage must stay an error: answering it with notFound() would turn
+    // every URL of the site into a soft 404 while the API is merely unreachable.
+    const mod = loadServer();
+    pageFailure = failure;
+    const flyo = mod.initNitro({ accessToken: 't', defaultLocale: 'en', locales: ['en', 'de'] });
+
+    await expect(
+      flyo.pageResolveRoute({ params: Promise.resolve({ slug: ['about'] }) }),
+    ).rejects.toBe(failure);
+
+    // The switcher still settles, so shared chrome renders on the error page.
+    await expect(readPublishedLinks(mod)).resolves.toEqual([]);
+  });
+
   it('entity route publishes a fallback before notFound when the entity is missing', async () => {
     const mod = loadServer();
     const flyo = mod.initNitro({ accessToken: 't', defaultLocale: 'de', locales: ['de', 'en'] });
-    const route = mod.nitroEntityRoute(flyo, { resolver: async () => null as unknown as Entity });
+    const route = mod.nitroEntityRoute(flyo, { resolver: async () => null });
 
     await expect(route({ params: Promise.resolve({}) })).rejects.toThrow('NEXT_NOT_FOUND');
 
@@ -113,7 +140,7 @@ describe('route helpers settle the language-links store on notFound paths', () =
   it('entity route publishes a fallback when the resolver throws, then rethrows the original error', async () => {
     const mod = loadServer();
     const flyo = mod.initNitro({ accessToken: 't', defaultLocale: 'en', locales: ['en', 'de'] });
-    const boom = new Error('CMS returned 404');
+    const boom = new Error('CMS is on fire');
     const route = mod.nitroEntityRoute(flyo, {
       resolver: async () => {
         throw boom;

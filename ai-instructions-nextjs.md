@@ -345,6 +345,20 @@ If the existing project already has a catch-all route or route groups, inspect t
 
 `nitroPageGenerateMetadata` emits the title, description, Open Graph / Twitter tags **and** a self-referencing canonical URL (from the page's `href`, or the active locale's `translation[]` entry on a multilingual site) — do not hand-write `alternates.canonical` for Nitro pages. It is prefixed with the `baseUrl` from `initNitro()`; without one, the path is resolved against Next.js' `metadataBase`, which defaults to `http://localhost:3000` — so make sure `baseUrl` is configured in production.
 
+Also create both route boundaries — every Flyo route needs them:
+
+```
+app/not-found.tsx        # rendered for a missing page or entity (HTTP 404)
+app/error.tsx            # rendered when the CMS is unreachable (HTTP 500), 'use client'
+```
+
+The library keeps the two apart on purpose, and both page and entity routes follow the same rule:
+
+- **Missing content is a 404.** An unknown path, a CMS `404`, or a resolver returning `null` renders `not-found.tsx`.
+- **Everything else is an error.** A `401` from a wrong access token, a `500`, a network failure — these are rethrown and render `error.tsx`. Never "fix" that by catching them into `notFound()`: answering an outage with a soft 404 on every URL is what gets a site de-indexed while the API is merely down for a few minutes.
+
+**Never render `NitroLanguageLinks` (or any switcher publishing) in `not-found.tsx`** — see the multilanguage section for why.
+
 ### 8. Prepare a project WYSIWYG wrapper
 Most Flyo Nitro projects use WYSIWYG fields. Create a reusable wrapper even if there are no custom nodes yet.
 
@@ -763,6 +777,8 @@ const resolver: EntityResolver<{ lang: string; slug: string }> = async (params) 
 };
 ```
 
+   Keep the resolver exactly this bare — **do not wrap it in `try`/`catch`**. `entityBySlug()` rejects with HTTP `404` for an unknown slug (it never resolves to `null`), and `nitroEntityRoute` / `nitroEntityGenerateMetadata` turn precisely that into `notFound()`, while any other failure stays a real error. A `catch` around it either swallows outages into soft 404s or, if it rethrows everything, turns an ordinary missing entity into an HTTP 500 error page. For a custom route that resolves entities without those helpers, use the exported `isApiNotFound(error)` guard: `if (!isApiNotFound(error)) throw error; notFound();`. With `liveEdit: true` the library logs every not-found decision (`[flyo] 404 → not-found.tsx: … {"slug":"…"}`), which is how to debug an unexpected 404 — usually a wrong `typeId`, an unpublished entity, or a changed slug.
+
 5. Language switcher. Use the built-in `NitroLanguageSwitcher` — do **not** hand-build a switcher in the layout from `page.translation` or `getLanguageLinks()`. The layout is an **ancestor** of the page (it cannot receive `page.translation` as a prop) and it **never re-renders on soft `<Link>` navigation**, so anything hand-built there goes stale after the first client-side navigation. `NitroLanguageSwitcher` handles both internally (server store for the first load, client store for every soft navigation). The required `default` prop is the switcher definition — locale set, display order, and labels (ask the user for the desired order and labels); the active route's published links contribute only the translated hrefs:
 
    ```
@@ -866,6 +882,9 @@ components/layout/Footer.tsx exists
 Header and Footer use the user-provided Flyo container identifiers
 generated/flyo.ts exists
 app/[[...slug]]/page.tsx exists
+app/not-found.tsx exists and does NOT publish language links
+app/error.tsx exists ('use client') for CMS failures that are not 404s
+Entity resolvers are bare (no try/catch around entityBySlug)
 components/flyo/wysiwyg/AppWysiwyg.tsx exists
 components/flyo/FlyoImage.tsx exists
 app/sitemap.ts exists and exports revalidate

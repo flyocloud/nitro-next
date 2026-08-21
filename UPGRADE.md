@@ -1,3 +1,118 @@
+# Upgrading to v2.11.0
+
+**A missing entity is now a 404, not a crash — and a CMS outage is now an error,
+not a 404.** No code changes required; two behaviours change.
+
+```bash
+npm install @flyo/nitro-next@^2.11.0
+```
+
+## What changed
+
+### 1. Entity routes answer a missing entity with a real 404
+
+`entityBySlug()` / `entityByUniqueid()` never resolve to `null` for an unknown
+slug: the API answers HTTP 404 and the generated client rejects with a
+`ResponseError`. `nitroEntityRoute` and `nitroEntityGenerateMetadata` used to
+rethrow that, so the most ordinary case on a detail route — a link to content
+that no longer exists, or a slug someone typed — rendered an **error page (HTTP
+500)** instead of the 404 it is. Every project that copied the resolver from the
+README was affected.
+
+A CMS 404 (and a resolver returning `null`/`undefined`) now renders
+`app/not-found.tsx` with a real 404 status. The straight resolver from the docs
+is complete again, and the workaround some projects added can go:
+
+```diff
+  const resolver: EntityResolver<{ slug: string }> = async (params) => {
+    const { slug } = await params;
+-   return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 })
+-     .catch((e) => { if (e?.response?.status !== 404) throw e; notFound(); });
++   return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
+  };
+```
+
+Leaving that `.catch()` in place is harmless — it does exactly what the library
+now does — so there is nothing you *must* change.
+
+`EntityResolver` is also widened to `Promise<Entity | null | undefined>`, so a
+resolver that returns "nothing found" no longer needs a
+`null as unknown as Entity` cast to satisfy the type. Existing resolvers that
+return `Promise<Entity>` keep compiling unchanged.
+
+### 2. Page routes no longer answer a CMS failure with a 404
+
+The mirror image, and the reason the split matters: `pageResolveRoute` (so also
+`nitroPageRoute` / `NitroPage`) used to call `notFound()` for **any** failed page
+fetch. A wrong access token (401), an API 500 or a DNS hiccup therefore made the
+whole site answer 404 while it was merely unreachable — an invisible outage, and
+the fastest way to get content de-indexed.
+
+Now only a 404 from the CMS is a 404. Everything else is rethrown and renders
+your error boundary:
+
+| Failure | Before | Now |
+|---|---|---|
+| path not in `config.pages` | `404` | `404` |
+| CMS answers `404` | `404` | `404` |
+| CMS answers `401` (bad token) | `404` | **error (500)** |
+| CMS answers `500`, or the request fails | `404` | **error (500)** |
+
+## What to do
+
+### 1. Add `app/error.tsx` if you don't have one
+
+Failures that used to render your 404 page now render Next.js' error boundary.
+The default one is fine, but the branded version is one small file:
+
+```tsx
+// app/error.tsx
+'use client'
+
+export default function Error({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  return (
+    <div>
+      <h1>Something went wrong</h1>
+      <button onClick={reset}>Try again</button>
+    </div>
+  );
+}
+```
+
+### 2. Debugging an unexpected 404: turn on `liveEdit`
+
+With `liveEdit: true` in `initNitro()`, every not-found decision is logged with
+its route params:
+
+```
+[flyo] 404 → not-found.tsx: the CMS has no entity for this route (API answered HTTP 404) {"slug":"lion"}
+[flyo] 404 → not-found.tsx: "about-us" is not in the config's routing table (config.pages) {"lang":"en"}
+```
+
+Production stays silent — crawlers generate far too many 404s to log. The usual
+causes are a wrong `typeId`, an entity that is not published, or a slug that
+changed in the CMS.
+
+### 3. Custom routes: reuse the same rule with `isApiNotFound`
+
+Routes that resolve Flyo content without the helpers can apply the identical
+split with the newly exported guard:
+
+```tsx
+import { isApiNotFound } from '@flyo/nitro-next/server';
+import { notFound } from 'next/navigation';
+
+const entity = await flyo
+  .getNitroEntities()
+  .entityBySlug({ slug, typeId: 123 })
+  .catch((error) => {
+    if (!isApiNotFound(error)) throw error; // 401 / 500 / network stay real errors
+    notFound();
+  });
+```
+
+---
+
 # Upgrading to v2.10.0
 
 **`FlyoMetric` gained an `enabled` prop, and `isProd` is deprecated.** Nothing

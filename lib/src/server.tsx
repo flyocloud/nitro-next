@@ -68,10 +68,23 @@ type EntityRouteParams<T = any> = {
 
 /**
  * Entity resolver function type
- * Users provide this to resolve entities from their route params
+ * Users provide this to resolve entities from their route params.
+ *
+ * Three outcomes are supported, and the route helpers turn each into the right
+ * HTTP answer:
+ *
+ * - **an entity** → the page renders;
+ * - **`null` / `undefined`, or a rejection with HTTP 404** (what
+ *   `entityBySlug()` does for an unknown slug) → `notFound()`, i.e. a real 404
+ *   with `not-found.tsx`;
+ * - **any other rejection** → rethrown, so a wrong access token or a CMS
+ *   outage surfaces as an error instead of a soft 404.
+ *
+ * Calling `notFound()` inside the resolver keeps working as well — it is just
+ * the explicit form of the second case.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type EntityResolver<T = any> = (params: Promise<T>) => Promise<Entity>;
+export type EntityResolver<T = any> = (params: Promise<T>) => Promise<Entity | null | undefined>;
 
 /**
  * The Flyo instance returned by initNitro().
@@ -145,6 +158,83 @@ function toLastModified(updatedAt: number | string | undefined): Date | undefine
   const date = new Date(seconds * 1000);
 
   return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+/**
+ * Read the HTTP status out of whatever a CMS call threw.
+ *
+ * The generated API client (`@flyo/nitro-typescript`) rejects every non-2xx
+ * response with a `ResponseError` that carries the raw `Response`, so the
+ * status lives at `error.response.status`. A plain `status` property is read
+ * too, for resolvers that call the API through `fetch` or a wrapper of their
+ * own. Everything else — a network failure, a thrown string, the digest error
+ * `notFound()` itself throws — has no status and yields `undefined`.
+ */
+function httpStatusOf(error: unknown): number | undefined {
+  const candidate = error as { response?: { status?: unknown }; status?: unknown } | null | undefined;
+  const status = candidate?.response?.status ?? candidate?.status;
+
+  return typeof status === 'number' ? status : undefined;
+}
+
+/**
+ * Did the CMS answer "this content does not exist" (HTTP 404)?
+ *
+ * This is the distinction the route helpers are built on: a 404 is a **404
+ * page**, and every other failure — 401 from a wrong access token, a 500 from
+ * the API, a DNS or TLS error — is a **real error** that must stay loud.
+ * Answering those with `notFound()` would turn an outage into a soft 404 on
+ * every URL of the site, which is how search engines are told to de-index
+ * content that is merely unreachable for a few minutes.
+ *
+ * `nitroEntityRoute`, `nitroEntityGenerateMetadata` and `pageResolveRoute`
+ * apply it for you. Exported for custom routes that resolve Flyo content
+ * themselves:
+ *
+ * ```tsx
+ * import { isApiNotFound } from '@flyo/nitro-next/server';
+ * import { notFound } from 'next/navigation';
+ *
+ * const entity = await flyo
+ *   .getNitroEntities()
+ *   .entityBySlug({ slug, typeId: 123 })
+ *   .catch((error) => {
+ *     if (!isApiNotFound(error)) throw error;
+ *     notFound();
+ *   });
+ * ```
+ */
+export function isApiNotFound(error: unknown): boolean {
+  return httpStatusOf(error) === 404;
+}
+
+/**
+ * Log why a route is about to render `not-found.tsx`, but only while live
+ * editing is on (`initNitro({ liveEdit })`) — the mode an editor or a developer
+ * is watching the server output in, and where a 404 usually means a wrong
+ * `typeId`, an unpublished entity or a stale slug. Production stays quiet: a
+ * 404 is an ordinary answer there, and crawlers produce enough of them to drown
+ * a log.
+ *
+ * `detail` may be a value or a promise (a route's `params`), and is awaited and
+ * serialized only when the line is actually printed.
+ */
+async function logNotFound(state: NitroState, reason: string, detail?: unknown): Promise<void> {
+  if (!state.liveEdit) {
+    return;
+  }
+
+  let serialized = '';
+  try {
+    const awaited = await detail;
+    if (awaited !== undefined) {
+      serialized = ` ${JSON.stringify(awaited) ?? String(awaited)}`;
+    }
+  } catch {
+    // Never let debug output break the 404 it is describing.
+  }
+
+  console.warn(`[flyo] 404 → not-found.tsx: ${reason}${serialized}`);
 }
 
 /**
@@ -267,19 +357,32 @@ export function initNitro({
 
     if (!cfg.pages?.includes(path)) {
       publishNotFoundFallback();
+      await logNotFound(state, `"${path}" is not in the config's routing table (config.pages)`, { lang });
       notFound();
     }
 
-    const page = await new PagesApi(configuration)
-      .page({ slug: path, lang })
-      .catch((error: unknown) => {
-        console.error('Error fetching page:', path, error);
-        publishNotFoundFallback();
+    // A 404 from the API is a 404 page; anything else (a 401 from a wrong
+    // access token, a 500, a network failure) is rethrown, so an outage shows
+    // up as an error instead of turning every URL into a soft 404 — see
+    // {@link isApiNotFound}.
+    let page: Page | undefined;
+    try {
+      page = await new PagesApi(configuration).page({ slug: path, lang });
+    } catch (error) {
+      publishNotFoundFallback();
+
+      if (isApiNotFound(error)) {
+        await logNotFound(state, `the CMS has no page "${path}" (API answered HTTP 404)`, { lang });
         notFound();
-      });
+      }
+
+      console.error(`[flyo] Error fetching page "${path}":`, error);
+      throw error;
+    }
 
     if (!page) {
       publishNotFoundFallback();
+      await logNotFound(state, `the CMS returned an empty response for page "${path}"`, { lang });
       notFound();
     }
 
@@ -729,16 +832,29 @@ function createCachedEntityResolver<T>(
     // which the App Router also renders on 200s.
     const publishNotFoundFallback = () => publishLanguageLinks([]);
 
-    let entity: Entity;
+    let entity: Entity | null | undefined;
     try {
       entity = await resolver(params);
     } catch (error) {
       publishNotFoundFallback();
+
+      // `entityBySlug()` / `entityByUniqueid()` never resolve to `null` for an
+      // unknown slug: the API answers HTTP 404 and the generated client rejects
+      // with a `ResponseError`. Without this branch the most ordinary case of
+      // all — a link to content that no longer exists — would render an error
+      // page (HTTP 500) instead of the 404 it is. Every other status is
+      // rethrown, so outages stay loud; see {@link isApiNotFound}.
+      if (isApiNotFound(error)) {
+        await logNotFound(flyo.state, 'the CMS has no entity for this route (API answered HTTP 404)', params);
+        notFound();
+      }
+
       throw error;
     }
 
     if (!entity) {
       publishNotFoundFallback();
+      await logNotFound(flyo.state, 'the resolver returned no entity for this route', params);
       notFound();
     }
 
