@@ -633,7 +633,7 @@ export default nitroEntityRoute(flyo, {
   resolver,
   render: (entity: Entity) => (
     <>
-      <FlyoMetric entity={entity} />
+      <FlyoMetric entity={entity} enabled={!flyo.state.liveEdit} />
       <article>
         <h1>{entity.entity?.entity_title}</h1>
         <p>{entity.entity?.entity_teaser}</p>
@@ -668,7 +668,7 @@ export default nitroEntityRoute(flyo, {
   resolver,
   render: (entity: Entity) => (
     <>
-      <FlyoMetric entity={entity} />
+      <FlyoMetric entity={entity} enabled={!flyo.state.liveEdit} />
       <div>
         <h1>{entity.entity?.entity_title}</h1>
       </div>
@@ -705,7 +705,7 @@ export default nitroEntityRoute(flyo, {
   resolver,
   render: (entity: Entity) => (
     <>
-      <FlyoMetric entity={entity} />
+      <FlyoMetric entity={entity} enabled={!flyo.state.liveEdit} />
       <div>
         <h1>{entity.entity?.entity_title}</h1>
         <p>{entity.entity?.entity_teaser}</p>
@@ -1048,6 +1048,117 @@ import { NitroPageJsonLd, NitroEntityJsonLd } from '@flyo/nitro-next/server';
 <NitroEntityJsonLd entity={entity} /> // entity.jsonld
 ```
 
+### 15. Production-only Code (metrics, analytics)
+
+Some things must run on the live site and nowhere else: entity metrics, analytics,
+pixels, error reporting with a paid event quota. Getting that wrong is easy,
+because **`NODE_ENV` cannot tell you whether a deployment is the live site**.
+Every hosting platform builds preview, branch and staging deployments in
+production mode, so on Vercel `process.env.NODE_ENV === 'production'` is `true` on
+a pull-request preview exactly as it is on your domain.
+
+Your route files and layout are server components, so that is where the answer is
+already available — no library helper needed.
+
+#### `flyo.state.liveEdit` is the flag you already have
+
+`initNitro({ liveEdit })` is the switch you configured, readable back as
+`flyo.state.liveEdit`. Feed it from whatever environment variable you like; in the
+usual setup it is on for local development, editor previews and any deployment the
+editor points at — which is precisely the set of deployments that shouldn't count.
+
+#### Metrics: the `enabled` prop
+
+`FlyoMetric` sends the request when `enabled` is true (the default). Pass the flag
+from the route file:
+
+```tsx
+// app/blog/[slug]/page.tsx
+import { flyo } from "@/flyo.config";
+import { FlyoMetric } from "@flyo/nitro-next/client";
+
+export default nitroEntityRoute(flyo, {
+  resolver,
+  render: (entity: Entity) => (
+    <>
+      <FlyoMetric entity={entity} enabled={!flyo.state.liveEdit} />
+      <article>{/* … */}</article>
+    </>
+  )
+});
+```
+
+Add your platform's own marker when you want previews excluded even without live
+editing — on Vercel that is `NEXT_PUBLIC_VERCEL_ENV`:
+
+```tsx
+const isLive = !flyo.state.liveEdit && process.env.NEXT_PUBLIC_VERCEL_ENV === 'production';
+
+<FlyoMetric entity={entity} enabled={isLive} />
+```
+
+#### Example: tracking scripts
+
+The same flag gates a tracking script. Keep the snippet in its own component and
+render it conditionally from the layout:
+
+```tsx
+// components/Analytics.tsx
+import Script from 'next/script';
+
+export function Analytics() {
+  return (
+    <>
+      {/* Plausible */}
+      <Script defer data-domain="example.com" src="https://plausible.io/js/script.js" />
+
+      {/* …or Google Analytics 4 */}
+      <Script src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX" />
+      <Script id="ga4">{`
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-XXXXXXXXXX');
+      `}</Script>
+    </>
+  );
+}
+```
+
+```tsx
+// app/layout.tsx
+import { flyo } from '@/flyo.config';
+import { Analytics } from '@/components/Analytics';
+
+const isLive =
+  !flyo.state.liveEdit && process.env.NEXT_PUBLIC_VERCEL_ENV === 'production';
+
+// …inside <body>, next to <NitroDebugInfo flyo={flyo} />
+{isLive && <Analytics />}
+```
+
+Because the condition is evaluated on the server and the scripts are simply not
+rendered, no pixel fires from a preview URL, from `npm run dev`, or while an
+editor clicks through the live preview. The same guard works for GTM,
+Meta/LinkedIn pixels, Hotjar and error reporting.
+
+#### Which environment variable?
+
+Whatever your platform exposes. Only `NEXT_PUBLIC_*` variables are inlined into
+the browser bundle, so if the check lives in a client component it needs the
+prefix; in a server component (layout, route file) any variable works.
+
+| Platform | Variable | Value on the live site |
+|----------|----------|------------------------|
+| Vercel | `VERCEL_ENV` / `NEXT_PUBLIC_VERCEL_ENV` (automatic) | `production` |
+| Netlify | `CONTEXT` | `production` |
+| Cloudflare Pages | `CF_PAGES_BRANCH` | your production branch |
+| anywhere | your own, e.g. `NEXT_PUBLIC_ENV` | up to you |
+
+> **Deprecated:** `isProd` from `@flyo/nitro-next/client` still exists but only
+> reflects `NODE_ENV`, so it is `true` on preview deployments as well. It will be
+> removed in a future major — see [UPGRADE.md](UPGRADE.md).
+
 ## API Reference
 
 ### Client Exports
@@ -1074,7 +1185,7 @@ import { NitroPageJsonLd, NitroEntityJsonLd } from '@flyo/nitro-next/server';
 
   <Image loader={FlyoCdnLoaderCrop({ aspectRatio: 1 })} … />
   ```
-- **`FlyoMetric`** – Component for tracking entity metrics in production. Automatically sends a metric tracking request to the Flyo API when in production environment and the entity has a metric API URL configured.
+- **`FlyoMetric`** – Component for tracking entity metrics. Sends a metric tracking request to the Flyo API when the entity has a metric API URL configured and the optional **`enabled`** prop is true (the default). Pass `enabled={!flyo.state.liveEdit}` from the route file to keep local, preview and editor views out of the statistics — see [Production-only Code](#15-production-only-code-metrics-analytics).
   ```tsx
   import { FlyoMetric } from '@flyo/nitro-next/client';
   ```
@@ -1082,7 +1193,7 @@ import { NitroPageJsonLd, NitroEntityJsonLd } from '@flyo/nitro-next/server';
   ```tsx
   import { EditableSection } from '@flyo/nitro-next/client';
   ```
-- **`isProd`** – Constant that checks if the current environment is production (`process.env.NODE_ENV === 'production'`).
+- **`isProd`** – ⚠️ **Deprecated.** `process.env.NODE_ENV === 'production'`, which is also `true` on preview deployments, so it cannot gate production-only code. Kept so existing imports keep compiling; it will be removed in a future major. Use `flyo.state.liveEdit` plus your platform's environment marker instead — see [Production-only Code](#15-production-only-code-metrics-analytics) and [UPGRADE.md](UPGRADE.md).
   ```tsx
   import { isProd } from '@flyo/nitro-next/client';
   ```

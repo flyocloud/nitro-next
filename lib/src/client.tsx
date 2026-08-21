@@ -185,7 +185,27 @@ export function NitroLanguageSwitcherClient({
 const FLYO_CDN_HOST = 'storage.flyo.cloud';
 
 /**
- * Check if running in production environment
+ * Whether the build ran with `NODE_ENV=production`.
+ *
+ * @deprecated This cannot tell the live site from a preview deployment: every
+ * hosting platform builds pull-request previews, branch and staging deploys with
+ * `NODE_ENV=production` too, so on Vercel this is `true` on every deployment.
+ * It is kept only so existing imports keep compiling, and will be removed in a
+ * future major.
+ *
+ * Decide in your own code instead, where the deployment actually is known, and
+ * pass the result down. `flyo.state.liveEdit` is the live-edit switch you
+ * configured in `initNitro()`, so it covers local development, previews and
+ * editor sessions in one flag:
+ *
+ * ```tsx
+ * // app/blog/[slug]/page.tsx — a server component
+ * <FlyoMetric entity={entity} enabled={!flyo.state.liveEdit} />
+ * ```
+ *
+ * For tracking scripts, gate the component the same way and add whichever
+ * environment marker your platform exposes — e.g.
+ * `process.env.NEXT_PUBLIC_VERCEL_ENV === 'production'` on Vercel.
  */
 export const isProd = process.env.NODE_ENV === 'production';
 
@@ -568,24 +588,31 @@ export function FlyoCdnLoaderCrop(
 }
 
 /**
- * FlyoMetric component for tracking entity metrics in production
- * 
- * Automatically sends a metric tracking request to the Flyo API when:
- * - The environment is production (NODE_ENV === 'production')
- * - The entity has a metric API URL configured
- * 
+ * FlyoMetric component for tracking entity metrics
+ *
+ * Sends a metric tracking request to the Flyo API when `enabled` is true and the
+ * entity has a metric API URL configured.
+ *
+ * The route file is a server component, so it — not this component — is where
+ * the deployment is known. Pass `enabled` from there: `flyo.state.liveEdit` is
+ * the live-edit switch you configured in `initNitro()`, which covers local
+ * development, preview deployments and editor sessions in one flag.
+ *
  * @param entity - The entity object containing entity_metric.api
- * 
+ * @param enabled - Whether to send the request. Defaults to `true`; pass `false`
+ *   on any deployment whose views shouldn't count towards the statistics.
+ *
  * @example
  * ```tsx
  * import { FlyoMetric } from '@flyo/nitro-next/client';
- * 
+ * import { flyo } from '@/flyo.config';
+ *
  * export default function BlogPost(props: RouteParams) {
  *   return nitroEntityRoute(props, {
  *     resolver,
  *     render: (entity: Entity) => (
  *       <>
- *         <FlyoMetric entity={entity} />
+ *         <FlyoMetric entity={entity} enabled={!flyo.state.liveEdit} />
  *         <article>
  *           <h1>{entity.entity?.entity_title}</h1>
  *         </article>
@@ -595,13 +622,12 @@ export function FlyoCdnLoaderCrop(
  * }
  * ```
  */
-export function FlyoMetric({ entity }: { entity: Entity }) {
+export function FlyoMetric({ entity, enabled = true }: { entity: Entity; enabled?: boolean }) {
   useEffect(() => {
-    // Only track metrics in production and if API URL is available
-    if (isProd && entity?.entity?.entity_metric?.api) {
+    if (enabled && entity?.entity?.entity_metric?.api) {
       fetch(entity.entity.entity_metric.api);
     }
-  }, [entity]);
+  }, [entity, enabled]);
 
   // This component doesn't render anything
   return null;
