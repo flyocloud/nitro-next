@@ -136,6 +136,7 @@ describe('initNitro', () => {
     expect(typeof flyo.getNitroSitemap).toBe('function');
     expect(typeof flyo.getNitroSearch).toBe('function');
     expect(typeof flyo.pageResolveRoute).toBe('function');
+    expect(typeof flyo.entityResolveSlug).toBe('function');
     expect(typeof flyo.sitemap).toBe('function');
   });
 
@@ -212,6 +213,30 @@ describe('flyo.sitemap', () => {
     expect(entries.map((entry) => entry.url)).toEqual([
       'https://example.com/',
       'https://example.com/news/news-title-1',
+    ]);
+  });
+
+  it('builds a full entry from the v2 sitemap item alone', async () => {
+    // Exactly what `SitemapinterfaceInner` carries since SDK v2 — no
+    // entity_title, entity_teaser, entity_image, entity_time_start or
+    // entity_type_id, which moved off the sitemap onto search/entities.
+    mockSitemapItems = [
+      {
+        entity_unique_id: 'abc123',
+        updated_at: 1700000000,
+        href: '/news/news-title-1',
+        entity_type: 'nitro-page',
+        entity_slug: 'news-title-1',
+        routes: { detail: 'view/2348uc/news-title-1', _empty: false },
+      },
+    ];
+    const flyo = initNitro({ accessToken: 'test-token', baseUrl: 'https://example.com' });
+    const entries = await flyo.sitemap();
+    expect(entries).toEqual([
+      {
+        url: 'https://example.com/news/news-title-1',
+        lastModified: new Date('2023-11-14T22:13:20.000Z'),
+      },
     ]);
   });
 

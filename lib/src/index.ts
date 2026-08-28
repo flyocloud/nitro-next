@@ -8,6 +8,7 @@ export {
   NitroJsonLd,
   NitroPageJsonLd,
   NitroEntityJsonLd,
+  NitroDraftNotice,
   // Initialization
   initNitro,
   // Factory functions for Next.js app router - Pages
@@ -28,8 +29,20 @@ export {
   type FlyoLanguageLink,
 } from './server';
 
-// Re-export types from Flyo SDK for convenience
-export type { Entity, Block, Page, ConfigResponse, Translation } from '@flyo/nitro-typescript';
+// Re-export types from Flyo SDK for convenience.
+// `SitemapinterfaceInner` is what `SitemapApi.sitemap()` returns since SDK v2 —
+// it is *not* the entity/search model, and carries neither title, teaser, image
+// nor `entity_time_start`. `EntityinterfaceInner` still describes what
+// `SearchApi.search()` and `EntitiesApi` deliver.
+export type {
+  Entity,
+  Block,
+  Page,
+  ConfigResponse,
+  Translation,
+  SitemapinterfaceInner,
+  EntityinterfaceInner,
+} from '@flyo/nitro-typescript';
 
 // Re-export client utilities for convenience
 // FlyoCdnLoader / FlyoCdnLoaderCrop are re-exported here because they're pure utility functions
