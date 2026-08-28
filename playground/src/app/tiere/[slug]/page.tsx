@@ -8,12 +8,14 @@ import { FlyoMetric } from "@flyo/nitro-next/client";
 import type { Entity } from "@flyo/nitro-typescript";
 
 // Define the resolver - how to get the entity from route params.
-// `entityResolveSlug` filters by `typeId` like `entityBySlug` does, but also
-// resolves draft links, whose opaque token takes the place of the slug and is
-// not something the type filter applies to.
+// Draft links come through this very same call: their token takes the place of
+// the slug, and the `typeId` filter simply does not apply to it.
 const resolver: EntityResolver<{ slug: string }> = async (params) => {
     const { slug } = await params;
-    return flyo.entityResolveSlug(slug, { typeId: 172 });
+    return flyo.getNitroEntities().entityBySlug({
+        slug,
+        typeId: 172
+    });
 };
 
 export const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });

@@ -96,7 +96,6 @@ The `flyo` instance provides:
 - `flyo.getNitroSitemap()` — Get the Sitemap API client
 - `flyo.getNitroSearch()` — Get the Search API client
 - `flyo.pageResolveRoute(props)` — Resolve a page from route params
-- `flyo.entityResolveSlug(slug, options?)` — Resolve an entity (or a [draft link](#draft-links)) by slug
 - `flyo.sitemap()` — Generate the sitemap
 - `flyo.state` — Access the configuration state
 
@@ -625,7 +624,8 @@ import type { Entity } from "@flyo/nitro-typescript";
 // Define how to resolve the entity from route params
 const resolver: EntityResolver<{ slug: string }> = async (params) => {
   const { slug } = await params;
-  return flyo.entityResolveSlug(slug, {
+  return flyo.getNitroEntities().entityBySlug({ 
+    slug, 
     typeId: 123 // Your entity type ID from Flyo
   });
 };
@@ -697,7 +697,10 @@ import type { Entity } from "@flyo/nitro-typescript";
 
 const resolver: EntityResolver<{ id: string }> = async (params) => {
   const { id } = await params;
-  return flyo.entityResolveSlug(id, { typeId: 456 });
+  return flyo.getNitroEntities().entityBySlug({ 
+    slug: id,
+    typeId: 456
+  });
 };
 
 export const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
@@ -756,19 +759,17 @@ Nothing to wire up: it happens for you as long as `createProxy()` covers the rou
 - Rename it with `initNitro({ draftUrlMarker: 'preview' })`, or switch the redirect off with `draftUrlMarker: false`. With it off, drafts still skip Next.js's own render cache, but the browser and CDN cache them like any other page.
 - Draft URLs arriving in a different shape (a `/preview/…` prefix, a cookie your own route handler sets)? Tell the proxy how to spot them: `createProxy(flyo, { isDraftRequest: (req) => … })`.
 
-**Two things to check in an existing integration:**
+**Your resolver needs no change.** A draft token is requested through the same `entityBySlug()` / `entityByUniqueid()` call as any other entity, and the `typeId` filter does not apply to a token — so a type-filtered route resolves draft links exactly as it resolves published ones.
 
-1. **Let the token through your router.** A route that validates its parameter against a slug pattern (or a `generateStaticParams` with `dynamicParams = false`) rejects draft tokens before the API is ever asked.
-2. **Do not filter a draft token by `typeId`.** The token is not a slug the type filter applies to, so `entityBySlug({ slug: token, typeId })` answers 404. Use `flyo.entityResolveSlug(slug, { typeId })` instead — it filters by type like before, and retries without the filter when the lookup comes up empty, so draft links resolve on a type-filtered route:
+**One thing to check in an existing integration:** let the token through your router. A route that validates its parameter against a slug pattern — or an entity route combined with `dynamicParams = false` — rejects draft tokens before the API is ever asked:
 
-```tsx
-const resolver: EntityResolver<{ slug: string }> = async (params) => {
-  const { slug } = await params;
-  return flyo.entityResolveSlug(slug, { typeId: 123 });
-};
+```diff
+  const resolver: EntityResolver<{ slug: string }> = async (params) => {
+    const { slug } = await params;
+-   if (!/^[a-z0-9-]+$/.test(slug)) notFound();   // rejects the token
+    return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
+  };
 ```
-
-`entityByUniqueid()` takes draft tokens as-is — it has no type filter to get in the way.
 
 **The draft banner.** `nitroEntityRoute` renders a `NitroDraftNotice` above your content whenever the response is a draft, so a reviewer can tell a preview from the live page:
 
@@ -862,7 +863,7 @@ import type { Entity } from '@flyo/nitro-typescript';
 
 const resolver: EntityResolver<{ lang: string; slug: string }> = async (params) => {
   const { lang, slug } = await params;
-  return flyo.entityResolveSlug(slug, { typeId: 246, lang });
+  return flyo.getNitroEntities().entityBySlug({ slug, typeId: 246, lang });
 };
 
 export const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
@@ -1378,7 +1379,6 @@ After calling `initNitro()`, the returned instance exposes:
 | `flyo.getNitroSitemap()` | `SitemapApi` | Get the Sitemap API client |
 | `flyo.getNitroSearch()` | `SearchApi` | Get the Search API client |
 | `flyo.pageResolveRoute(props)` | `Promise<{ page, path, lang, cfg }>` | Resolve a page from route params, incl. the active `lang` (React-cached) |
-| `flyo.entityResolveSlug(slug, options?)` | `Promise<Entity>` | Resolve an entity by slug, filtered by `options.typeId`; also resolves [draft links](#draft-links), whose token the type filter does not apply to. `options.lang` is passed through as given — it is deliberately not filled in from the request locale, which would read a request header and opt the route out of Next's cache |
 | `flyo.sitemap()` | `Promise<MetadataRoute.Sitemap>` | Generate the Next.js sitemap |
 | `flyo.state` | `NitroState` | Access the configuration state |
 

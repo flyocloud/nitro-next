@@ -1,13 +1,12 @@
-# Upgrading to v3.0.0
+# Upgrading to v3.0.1
 
 **The Flyo TypeScript SDK moves to `^2.0.0`.** That is the whole reason this is a
 major: the sitemap endpoint got a response model of its own, which can break a
-build. Everything `@flyo/nitro-next` itself gives you keeps working, and two new
-capabilities come with it — **draft links**, which are served uncached at every
-layer, and `flyo.entityResolveSlug()`.
+build. Everything `@flyo/nitro-next` itself gives you keeps working, and one new
+capability comes with it: **draft links**, served uncached at every layer.
 
 ```bash
-npm install @flyo/nitro-next@^3.0.0
+npm install @flyo/nitro-next@^3.0.1
 ```
 
 `@flyo/nitro-typescript` is a dependency of this package, so the upgrade pulls it
@@ -108,27 +107,7 @@ route. Worth knowing:
 - Draft URLs reaching your site in another shape? `createProxy(flyo, {
   isDraftRequest: (req) => … })` replaces the detection.
 
-### 3. `flyo.entityResolveSlug()` (new)
-
-⚠️ **A draft token is not a slug the `typeId` filter applies to.** A type-filtered
-lookup answers 404 for a draft token, so a route built the usual way rejects every
-draft link it is sent — even though the API would resolve it.
-
-`entityResolveSlug()` filters by type like `entityBySlug()` does, and retries once
-without the filter when the lookup comes up empty:
-
-```diff
-  const resolver: EntityResolver<{ slug: string }> = async (params) => {
-    const { slug } = await params;
--   return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
-+   return flyo.entityResolveSlug(slug, { typeId: 123 });
-  };
-```
-
-The retry only ever runs on a request that was heading for `notFound()` anyway.
-`entityByUniqueid()` needs no equivalent — it has no type filter to get in the way.
-
-### 4. The draft banner (new)
+### 3. The draft banner (new)
 
 `nitroEntityRoute` renders a `NitroDraftNotice` above your content whenever the
 response is a draft, so a reviewer can tell a preview from the live page:
@@ -144,7 +123,7 @@ It renders nothing for published entities, so existing pages are untouched. Pass
 ### 1. Bump the dependency
 
 ```bash
-npm install @flyo/nitro-next@^3.0.0
+npm install @flyo/nitro-next@^3.0.1
 ```
 
 If your project imports `@flyo/nitro-typescript` directly, bump it to `^2.0.0`
@@ -159,14 +138,18 @@ at the reads that need moving to `/search` or `/entities`.
 
 ### 3. Let draft tokens reach the API
 
-Two things that silently 404 a draft link on the integration side:
+Your resolver itself needs no change: a draft token goes through the same
+`entityBySlug()` / `entityByUniqueid()` call as any other entity, and the `typeId`
+filter does not apply to a token, so a type-filtered route resolves draft links
+just as it resolves published ones.
+
+What does silently 404 a draft link is a router that gates the parameter:
 
 ```diff
   const resolver: EntityResolver<{ slug: string }> = async (params) => {
     const { slug } = await params;
 -   if (!/^[a-z0-9-]+$/.test(slug)) notFound();   // rejects the token
--   return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
-+   return flyo.entityResolveSlug(slug, { typeId: 123 });
+    return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
   };
 ```
 
@@ -185,7 +168,6 @@ cache, but the browser and CDN will cache them.
 |---|---|
 | `initNitro({ draftUrlMarker })` | **New.** Query parameter draft links are marked with. Default `'flyo-draft'`, `false` to switch the redirect off |
 | `flyo.state.draftUrlMarker` | **New.** `string \| null` — the resolved marker |
-| `flyo.entityResolveSlug(slug, options?)` | **New.** Resolve an entity by slug, drafts included |
 | `createProxy(flyo, options?)` | **Changed.** Takes `isDraftRequest` to override draft detection; answers draft requests with `no-store` |
 | `nitroEntityRoute(flyo, options)` | **Changed.** Takes `draftNotice` (default `true`) |
 | `NitroDraftNotice` | **New.** Server component rendering the draft banner |

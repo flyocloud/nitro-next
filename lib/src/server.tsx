@@ -125,12 +125,6 @@ export interface FlyoInstance {
   isMultilingual(): boolean;
   /** Resolve a page from catch-all route params (React-cached per request) */
   pageResolveRoute(props: RouteParams): Promise<{ page: Page; path: string; lang: string | undefined; cfg: ConfigResponse }>;
-  /**
-   * Resolve an entity by slug, and resolve **draft links** through the same
-   * route. Use it in an entity resolver in place of
-   * `getNitroEntities().entityBySlug()` — see {@link nitroEntityRoute}.
-   */
-  entityResolveSlug(slug: string, options?: { typeId?: number; lang?: string }): Promise<Entity>;
   /** Generate a Next.js sitemap from Flyo Nitro content */
   sitemap(): Promise<MetadataRoute.Sitemap>;
 }
@@ -328,41 +322,6 @@ export function initNitro({
     return { page, path, lang, cfg };
   });
 
-  // A draft token takes the place of the slug in the very same endpoint, but it
-  // is *not* a slug the `typeId` filter applies to: passing the type id along
-  // with a token makes the API answer 404, so a route that filters by type
-  // would reject every draft link it is sent.
-  //
-  // The token is opaque — nothing about it says "this is a draft" before the
-  // request — so the filtered lookup goes first and the unfiltered one only
-  // runs when it came up empty. The retry costs one extra request on a path
-  // that was heading for `notFound()` anyway, and the original error is what
-  // surfaces when the second attempt fails too.
-  //
-  // `lang` is passed through exactly as given — deliberately not filled in from
-  // the request locale. Resolving that reads a request header, which is a Next
-  // dynamic API: doing it here would opt every entity route out of the Full
-  // Route Cache, whether or not a draft is involved. On multilingual sites the
-  // locale is a route segment, so hand it in (see the i18n docs).
-  const entityResolveSlug = async (
-    slug: string,
-    { typeId, lang }: { typeId?: number; lang?: string } = {},
-  ): Promise<Entity> => {
-    const entitiesApi = new EntitiesApi(configuration);
-
-    if (typeId === undefined) {
-      return entitiesApi.entityBySlug({ slug, lang });
-    }
-
-    try {
-      return await entitiesApi.entityBySlug({ slug, typeId, lang });
-    } catch (error) {
-      return entitiesApi.entityBySlug({ slug, lang }).catch(() => {
-        throw error;
-      });
-    }
-  };
-
   const sitemap = async (): Promise<MetadataRoute.Sitemap> => {
     const sitemapApi = new SitemapApi(configuration);
     const sitemapLang = state.lang ?? undefined;
@@ -416,7 +375,6 @@ export function initNitro({
     getNitroSitemap: () => new SitemapApi(configuration),
     getNitroSearch: () => new SearchApi(configuration),
     pageResolveRoute,
-    entityResolveSlug,
     sitemap,
   };
 }
@@ -1403,9 +1361,7 @@ export function nitroPageGenerateStaticParams(flyo: FlyoInstance) {
  *
  * const resolver = async (params) => {
  *   const { slug } = await params;
- *   // `entityResolveSlug` also resolves draft links, which arrive with an
- *   // opaque token in place of the slug.
- *   return flyo.entityResolveSlug(slug, { typeId: 123 });
+ *   return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
  * };
  *
  * export default nitroEntityRoute(flyo, {

@@ -136,7 +136,6 @@ describe('initNitro', () => {
     expect(typeof flyo.getNitroSitemap).toBe('function');
     expect(typeof flyo.getNitroSearch).toBe('function');
     expect(typeof flyo.pageResolveRoute).toBe('function');
-    expect(typeof flyo.entityResolveSlug).toBe('function');
     expect(typeof flyo.sitemap).toBe('function');
   });
 

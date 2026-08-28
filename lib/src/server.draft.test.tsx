@@ -41,16 +41,13 @@ jest.mock('next/headers', () => ({
   }),
 }));
 
-// Calls the mocked EntitiesApi received; each test reads or replaces it.
-const entityBySlug = jest.fn();
-
 jest.mock('@flyo/nitro-typescript', () => ({
   Configuration: jest.fn().mockImplementation((config) => ({ ...config })),
   ConfigApi: jest.fn().mockImplementation(() => ({
     config: jest.fn().mockResolvedValue({ pages: [] }),
   })),
   PagesApi: jest.fn().mockImplementation(() => ({ page: jest.fn() })),
-  EntitiesApi: jest.fn().mockImplementation(() => ({ entityBySlug })),
+  EntitiesApi: jest.fn().mockImplementation(() => ({})),
   SitemapApi: jest.fn().mockImplementation(() => ({})),
   SearchApi: jest.fn().mockImplementation(() => ({})),
 }));
@@ -221,58 +218,6 @@ describe('draft entities and caching', () => {
     // An older API deployment, or a hand-built fixture, simply omits `is_draft`.
     expect(await renderRoute(initNitro({ accessToken: 't' }), { entity: { entity_title: 'Legacy' } })).toBeUndefined();
     expect(headers).not.toHaveBeenCalled();
-  });
-});
-
-describe('flyo.entityResolveSlug', () => {
-  it('passes the type filter through for a normal slug', async () => {
-    entityBySlug.mockResolvedValue(PUBLISHED);
-
-    const flyo = initNitro({ accessToken: 't' });
-    await expect(flyo.entityResolveSlug('hund', { typeId: 172 })).resolves.toBe(PUBLISHED);
-
-    expect(entityBySlug).toHaveBeenCalledTimes(1);
-    expect(entityBySlug).toHaveBeenCalledWith({ slug: 'hund', typeId: 172, lang: undefined });
-  });
-
-  it('passes lang through as given, without reading the request locale', async () => {
-    entityBySlug.mockResolvedValue(PUBLISHED);
-
-    // Filling `lang` in from the `x-flyo-locale` header would read `headers()`,
-    // a dynamic API, and opt every entity route out of the Full Route Cache.
-    const flyo = initNitro({ accessToken: 't', lang: 'de' });
-    await flyo.entityResolveSlug('hund', { typeId: 172, lang: 'en' });
-
-    expect(entityBySlug).toHaveBeenCalledWith({ slug: 'hund', typeId: 172, lang: 'en' });
-    expect(headers).not.toHaveBeenCalled();
-  });
-
-  it('retries without the type filter so a draft token resolves', async () => {
-    // A draft token is not a slug the `typeId` filter applies to: the filtered
-    // lookup 404s even though the API can resolve the token.
-    entityBySlug.mockRejectedValueOnce(new Error('404')).mockResolvedValueOnce(DRAFT);
-
-    const flyo = initNitro({ accessToken: 't' });
-    await expect(flyo.entityResolveSlug('opaque-token', { typeId: 172 })).resolves.toBe(DRAFT);
-
-    expect(entityBySlug).toHaveBeenNthCalledWith(1, { slug: 'opaque-token', typeId: 172, lang: undefined });
-    expect(entityBySlug).toHaveBeenNthCalledWith(2, { slug: 'opaque-token', lang: undefined });
-  });
-
-  it('rethrows the original error when the retry fails too', async () => {
-    const original = new Error('entity not found');
-    entityBySlug.mockRejectedValueOnce(original).mockRejectedValueOnce(new Error('still nothing'));
-
-    const flyo = initNitro({ accessToken: 't' });
-    await expect(flyo.entityResolveSlug('nope', { typeId: 172 })).rejects.toBe(original);
-  });
-
-  it('makes a single call when no type filter is given', async () => {
-    entityBySlug.mockRejectedValue(new Error('404'));
-
-    const flyo = initNitro({ accessToken: 't' });
-    await expect(flyo.entityResolveSlug('nope')).rejects.toThrow('404');
-    expect(entityBySlug).toHaveBeenCalledTimes(1);
   });
 });
 
