@@ -763,7 +763,7 @@ const lang = config.nitro?.language;        // the language this config resolved
 ```
 const resolver: EntityResolver<{ lang: string; slug: string }> = async (params) => {
   const { lang, slug } = await params;
-  return flyo.entityResolveSlug(slug, { typeId: <id>, lang });
+  return flyo.getNitroEntities().entityBySlug({ slug, typeId: <id>, lang });
 };
 ```
 
@@ -820,21 +820,18 @@ const resolver: EntityResolver<{ lang: string; slug: string }> = async (params) 
 See the "Multilanguage (i18n)" section of the README for full details.
 
 ### 12b. Entity detail routes and draft links
-Whenever the project has an entity detail route, resolve the entity with `flyo.entityResolveSlug()` rather than `flyo.getNitroEntities().entityBySlug()`:
+A **draft link** is a shareable, expiring snapshot of an entity that is still offline in Flyo. It reaches the site as an opaque token in place of the slug — `/blog/9f2c1e0a4b7d…` — so it lands on the entity route the project already has, and the response carries `is_draft: true` and a `draft_expires_at` timestamp.
+
+The resolver needs no special handling: a token goes through the same `entityBySlug()` / `entityByUniqueid()` call as any other entity, and the `typeId` filter does not apply to a token, so a type-filtered route resolves draft links too.
 
 ```
 const resolver: EntityResolver<{ slug: string }> = async (params) => {
   const { slug } = await params;
-  return flyo.entityResolveSlug(slug, { typeId: <id> });
+  return flyo.getNitroEntities().entityBySlug({ slug, typeId: <id> });
 };
 ```
 
-A **draft link** is a shareable, expiring snapshot of an entity that is still offline in Flyo. It reaches the site as an opaque token in place of the slug — `/blog/9f2c1e0a4b7d…` — so it lands on the entity route the project already has, and the response carries `is_draft: true` and a `draft_expires_at` timestamp.
-
-Two rules keep draft links working, and both are easy to break:
-
-- **Never validate the route parameter against a slug pattern**, and never combine an entity route with `dynamicParams = false`. A draft token looks like neither a slug nor a unique id, so any such gate rejects it before the API is asked.
-- **Never pass `typeId` together with a draft token.** The token is not a slug the type filter applies to, so the filtered lookup answers 404. `entityResolveSlug()` handles this: it filters by type first and retries once without the filter, which only ever happens on a request already heading for `notFound()`.
+One rule keeps draft links working, and it is easy to break: **never validate the route parameter against a slug pattern**, and never combine an entity route with `dynamicParams = false`. A draft token looks like neither a slug nor a unique id, so any such gate rejects it before the API is asked.
 
 Caching is handled for you: a draft response is served with `no-store` for the browser, the CDN and Next.js's own render cache. That works through a one-time redirect onto a marked URL (`?flyo-draft=1`) that `createProxy()` recognises, so the proxy matcher must cover entity routes. `nitroEntityRoute` also renders a visible "draft preview" banner above the content for draft responses (and nothing for published ones); pass `draftNotice: false` to place `<NitroDraftNotice entity={entity} />` yourself.
 
@@ -892,7 +889,7 @@ app/[[...slug]]/page.tsx exists
 components/flyo/wysiwyg/AppWysiwyg.tsx exists
 components/flyo/FlyoImage.tsx exists
 app/sitemap.ts exists and exports revalidate
-Entity detail routes resolve through flyo.entityResolveSlug() and do not gate the route param behind a slug pattern (draft links)
+Entity detail routes do not gate the route param behind a slug pattern or dynamicParams = false (draft links)
 .claude/skills/flyo-block/SKILL.md exists
 AGENTS.md exists at the project root and references the Flyo Nitro docs (github.com/flyocloud/nitro-next#usage and the raw ai-instructions-nextjs.md)
 The project builds successfully
