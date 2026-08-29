@@ -166,6 +166,8 @@ export const config = {
 ```
 Keep `proxy.ts` at the project root because the project uses a root-level `app/` directory and no `src/` directory.
 
+The proxy is what writes `Cache-Control`, `CDN-Cache-Control` and `Vercel-CDN-Cache-Control`. Next.js only fills in a `Cache-Control` that is not already set, so whatever the proxy writes is final — a Server Component cannot correct it. Keep the matcher covering every content route, including entity detail routes: the proxy is also what serves **draft links** with `no-store` (see step 12b).
+
 ### 4. Generate Flyo TypeScript definitions
 Create the generated types directory:
 
@@ -734,6 +736,8 @@ The `revalidate` export is **required**, not optional: without it Next.js render
 
 `flyo.sitemap()` fills each entry's `lastModified` from the item's `updated_at` (the last time that content changed in Flyo), not from the regeneration time — do not override it with `new Date()`. Entries whose item has no usable `updated_at` come back without a `lastModified`, so treat it as optional when post-processing the result.
 
+If you build a listing yourself from `flyo.getNitroSitemap().sitemap()`, note that the endpoint has its own model (`SitemapinterfaceInner`) since `@flyo/nitro-typescript` v2: it carries `href`, `updated_at` and `entity_unique_id` only. Titles, teasers, images and `entity_time_start` come from `flyo.getNitroSearch().search()` or `flyo.getNitroEntities()`. Never annotate a `sitemap()` result as `EntityinterfaceInner[]` — every property is optional, so the annotation compiles and the missing fields read `undefined` at runtime instead of erroring.
+
 ### 12. Optional: Multilanguage (i18n)
 If the Flyo project is multilingual, make the integration locale-aware. Ask the user:
 
@@ -831,6 +835,22 @@ const resolver: EntityResolver<{ lang: string; slug: string }> = async (params) 
 
 See the "Multilanguage (i18n)" section of the README for full details.
 
+### 12b. Entity detail routes and draft links
+A **draft link** is a shareable, expiring snapshot of an entity that is still offline in Flyo. It reaches the site as an opaque token in place of the slug — `/blog/9f2c1e0a4b7d…` — so it lands on the entity route the project already has, and the response carries `is_draft: true` and a `draft_expires_at` timestamp.
+
+The resolver needs no special handling: a token goes through the same `entityBySlug()` / `entityByUniqueid()` call as any other entity, and the `typeId` filter does not apply to a token, so a type-filtered route resolves draft links too.
+
+```
+const resolver: EntityResolver<{ slug: string }> = async (params) => {
+  const { slug } = await params;
+  return flyo.getNitroEntities().entityBySlug({ slug, typeId: <id> });
+};
+```
+
+One rule keeps draft links working, and it is easy to break: **never validate the route parameter against a slug pattern**, and never combine an entity route with `dynamicParams = false`. A draft token looks like neither a slug nor a unique id, so any such gate rejects it before the API is asked.
+
+Caching is handled for you: a draft response is served with `no-store` for the browser, the CDN and Next.js's own render cache. That works through a one-time redirect onto a marked URL (`?flyo-draft=1`) that `createProxy()` recognises, so the proxy matcher must cover entity routes. `nitroEntityRoute` also renders a visible "draft preview" banner above the content for draft responses (and nothing for published ones); pass `draftNotice: false` to place `<NitroDraftNotice entity={entity} />` yourself.
+
 ### 13. Create or update `AGENTS.md` so future agents have Flyo context
 So that any AI coding agent that works on this project later (Claude Code, Copilot, Cursor, etc.) automatically knows it is built on Flyo Nitro CMS and where to read the full library documentation, create — or update, if one already exists — an `AGENTS.md` file at the **project root**.
 
@@ -888,6 +908,7 @@ Entity resolvers are bare (no try/catch around entityBySlug)
 components/flyo/wysiwyg/AppWysiwyg.tsx exists
 components/flyo/FlyoImage.tsx exists
 app/sitemap.ts exists and exports revalidate
+Entity detail routes do not gate the route param behind a slug pattern or dynamicParams = false (draft links)
 .claude/skills/flyo-block/SKILL.md exists
 AGENTS.md exists at the project root and references the Flyo Nitro docs (github.com/flyocloud/nitro-next#usage and the raw ai-instructions-nextjs.md)
 The project builds successfully

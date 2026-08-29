@@ -1,10 +1,10 @@
-# Upgrading to v2.11.0
+# Upgrading to v3.2.0
 
 **A missing entity is now a 404, not a crash — and a CMS outage is now an error,
 not a 404.** No code changes required; two behaviours change.
 
 ```bash
-npm install @flyo/nitro-next@^2.11.0
+npm install @flyo/nitro-next@^3.2.0
 ```
 
 ## What changed
@@ -110,6 +110,185 @@ const entity = await flyo
     notFound();
   });
 ```
+
+---
+
+# Upgrading to v3.0.1
+
+**The Flyo TypeScript SDK moves to `^2.0.0`.** That is the whole reason this is a
+major: the sitemap endpoint got a response model of its own, which can break a
+build. Everything `@flyo/nitro-next` itself gives you keeps working, and one new
+capability comes with it: **draft links**, served uncached at every layer.
+
+```bash
+npm install @flyo/nitro-next@^3.0.1
+```
+
+`@flyo/nitro-typescript` is a dependency of this package, so the upgrade pulls it
+in for you. If your project imports the SDK directly (for `Entity`, `Block`,
+`Page` types), bump your own dependency to `^2.0.0` as well — a `^1.x` range
+never resolves to `2.0`.
+
+## What changed
+
+### 1. `sitemap()` returns its own model (breaking, if you read it yourself)
+
+Up to SDK v1.7 the sitemap endpoint reused the entity/search model. It now has a
+schema of its own, `SitemapinterfaceInner`, describing what the endpoint actually
+delivers:
+
+| Method | v1.7 | v2.0 |
+|--------|------|------|
+| `SitemapApi.sitemap()` | `Promise<Array<EntityinterfaceInner>>` | `Promise<Array<SitemapinterfaceInner>>` |
+| `SitemapApi.sitemapRaw()` | `Promise<ApiResponse<Array<EntityinterfaceInner>>>` | `Promise<ApiResponse<Array<SitemapinterfaceInner>>>` |
+
+Five properties are gone from a sitemap item — `entity_title`, `entity_teaser`,
+`entity_image`, `entity_time_start` and `entity_type_id`. What is left is exactly
+what a sitemap needs: `href`, `updated_at` and `entity_unique_id`.
+
+**`flyo.sitemap()` is unaffected** — it only ever read `href` and `updated_at`,
+and still returns `MetadataRoute.Sitemap`. Nothing to do if that is all you use.
+
+⚠️ **If you call `flyo.getNitroSitemap().sitemap()` yourself**, audit every read
+of the result for those five fields. They now come from `SearchApi.search()` or
+`EntitiesApi`:
+
+```diff
+- const items = await flyo.getNitroSitemap().sitemap({});
+- items.map(i => ({ title: i.entity_title, href: i.href }));
++ // Titles, teasers and images live on the search/entities models now
++ const items = await flyo.getNitroSearch().search({ query });
++ items.map(i => ({ title: i.entity_title, href: i.href }));
+```
+
+⚠️ **The compiler will not always catch this.** Every property on both models is
+optional, so `SitemapinterfaceInner` is still structurally assignable to
+`EntityinterfaceInner` — an explicit annotation keeps compiling while the dropped
+fields silently read `undefined` at runtime:
+
+```diff
+- const items: EntityinterfaceInner[] = await flyo.getNitroSitemap().sitemap({});
++ const items = await flyo.getNitroSitemap().sitemap({});
+  items.map(i => i.entity_title); // now an error, as it should be
+```
+
+Drop the annotation and let the type checker find the reads for you.
+
+`entity_type`, `entity_slug` and `routes` are still delivered and still typed as
+before, but marked `@deprecated`: `href` is the resolved URL for both container
+pages and mapped entities, and the endpoint omits entries that have no resolvable
+URL at all. Nothing breaks today; migrate URL assembly to `href` before the next
+major spec bump.
+
+`SearchApi.search()` still returns `EntityinterfaceInner[]` — that model is
+unchanged and not deprecated. Only the sitemap moved off it.
+
+### 2. Draft links, uncached at every layer (new)
+
+A **draft link** is a shareable, expiring snapshot of an entity that is still
+*offline* in Flyo — the only way such content can be looked at on the website at
+all. Flyo hands out a link whose opaque token takes the place of the slug or the
+unique id, so it arrives at the entity route you already have, and the response
+carries two new fields: `is_draft` and `draft_expires_at`.
+
+Draft content must not be stored where a second visitor could be served from, and
+must not linger in a browser after the link has expired. So a draft response is
+now served with caching off — **browser, CDN and Next.js alike**:
+
+```
+GET /blog/<token>                → 307 /blog/<token>?flyo-draft=1
+GET /blog/<token>?flyo-draft=1   → 200  Cache-Control: no-store
+                                        CDN-Cache-Control: no-store
+                                        Vercel-CDN-Cache-Control: no-store
+```
+
+The redirect is what makes that possible: `is_draft` is only known *after* the
+API has answered, half-way through the render, and a Server Component cannot set
+response headers — Next.js only fills in a `Cache-Control` the proxy has not
+already written. So the render bounces the request once onto a marked URL, and
+the proxy recognises the marker on the second pass. Reading the marker also marks
+the render dynamic, which keeps the draft out of Next's own Full Route Cache.
+
+**Nothing to configure** — this works as long as `createProxy()` covers the
+route. Worth knowing:
+
+- The marker only ever affects the URL that carries it. `?flyo-draft=1` is a
+  separate cache key from the clean URL, so appending it by hand does not disable
+  caching for your visitors — it bypasses the cache for that one URL variant,
+  exactly like any other unknown query parameter already does.
+- Rename it with `initNitro({ draftUrlMarker: 'preview' })`, or switch the
+  redirect off with `draftUrlMarker: false` (drafts then still skip Next's render
+  cache, but browser and CDN cache them like any other page).
+- Draft URLs reaching your site in another shape? `createProxy(flyo, {
+  isDraftRequest: (req) => … })` replaces the detection.
+
+### 3. The draft banner (new)
+
+`nitroEntityRoute` renders a `NitroDraftNotice` above your content whenever the
+response is a draft, so a reviewer can tell a preview from the live page:
+
+> Draft preview — this content is not published · link expires 2034-01-01 00:00 UTC
+
+It renders nothing for published entities, so existing pages are untouched. Pass
+`draftNotice: false` to place or style it yourself with the exported
+`<NitroDraftNotice entity={entity} />`.
+
+## What to do
+
+### 1. Bump the dependency
+
+```bash
+npm install @flyo/nitro-next@^3.0.1
+```
+
+If your project imports `@flyo/nitro-typescript` directly, bump it to `^2.0.0`
+too, then build.
+
+### 2. Audit your own sitemap reads
+
+Only if you call `flyo.getNitroSitemap().sitemap()` — see
+[§1](#1-sitemap-returns-its-own-model-breaking-if-you-read-it-yourself). Remove any
+`EntityinterfaceInner` annotation on that result first, so the compiler can point
+at the reads that need moving to `/search` or `/entities`.
+
+### 3. Let draft tokens reach the API
+
+Your resolver itself needs no change: a draft token goes through the same
+`entityBySlug()` / `entityByUniqueid()` call as any other entity, and the `typeId`
+filter does not apply to a token, so a type-filtered route resolves draft links
+just as it resolves published ones.
+
+What does silently 404 a draft link is a router that gates the parameter:
+
+```diff
+  const resolver: EntityResolver<{ slug: string }> = async (params) => {
+    const { slug } = await params;
+-   if (!/^[a-z0-9-]+$/.test(slug)) notFound();   // rejects the token
+    return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
+  };
+```
+
+A `generateStaticParams` with `dynamicParams = false` on an entity route does the
+same thing — a draft token is never in the pre-rendered list.
+
+### 4. Keep the proxy in front of your entity routes
+
+The draft cache headers come from `createProxy()`. If your matcher excludes the
+routes that serve entities, drafts still render and still skip Next's render
+cache, but the browser and CDN will cache them.
+
+## API changes in v3.0
+
+| | |
+|---|---|
+| `initNitro({ draftUrlMarker })` | **New.** Query parameter draft links are marked with. Default `'flyo-draft'`, `false` to switch the redirect off |
+| `flyo.state.draftUrlMarker` | **New.** `string \| null` — the resolved marker |
+| `createProxy(flyo, options?)` | **Changed.** Takes `isDraftRequest` to override draft detection; answers draft requests with `no-store` |
+| `nitroEntityRoute(flyo, options)` | **Changed.** Takes `draftNotice` (default `true`) |
+| `NitroDraftNotice` | **New.** Server component rendering the draft banner |
+| `Entity.is_draft`, `Entity.draft_expires_at` | **New**, from SDK v2 |
+| `SitemapApi.sitemap()` | **Breaking**, from SDK v2 — returns `SitemapinterfaceInner[]` |
+| `flyo.sitemap()` | Unchanged |
 
 ---
 

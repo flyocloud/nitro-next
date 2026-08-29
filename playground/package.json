@@ -10,7 +10,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@flyo/nitro-next": "2.11.0"
+    "@flyo/nitro-next": "*"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",

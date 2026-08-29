@@ -1,6 +1,6 @@
 import { cache, Suspense } from 'react';
 import type { Metadata, MetadataRoute } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { headers } from 'next/headers';
 import {
   Page,
@@ -31,6 +31,16 @@ export { getLanguageLinks };
 export type { FlyoLanguageLink, FlyoSwitcherLocale };
 export type { Translation } from '@flyo/nitro-typescript';
 
+// Draft links. The constants are shared with `proxy.ts`, which cannot import
+// from this module without dragging the whole server bundle into the edge
+// runtime — see the notes in `draft.ts`.
+import {
+  DEFAULT_DRAFT_URL_MARKER,
+  DRAFT_PATH_HEADER,
+  DRAFT_REQUEST_HEADER,
+  withDraftMarker,
+} from './draft';
+
 /**
  * Read-only configuration state
  */
@@ -49,6 +59,12 @@ export interface NitroState {
   readonly liveEdit: boolean;
   readonly serverCacheTtl: number;
   readonly clientCacheTtl: number;
+  /**
+   * Query parameter a draft URL is marked with so {@link createProxy} can send
+   * `no-store` for it, or `null` when draft URL marking is switched off. See
+   * `draftUrlMarker` on {@link initNitro}.
+   */
+  readonly draftUrlMarker: string | null;
 }
 
 /**
@@ -269,6 +285,7 @@ export function initNitro({
   liveEdit,
   serverCacheTtl,
   clientCacheTtl,
+  draftUrlMarker,
 }: {
   accessToken: string;
   lang?: string;
@@ -283,6 +300,14 @@ export function initNitro({
   liveEdit?: boolean;
   serverCacheTtl?: number;
   clientCacheTtl?: number;
+  /**
+   * Query parameter a resolved draft link is redirected onto, so that
+   * {@link createProxy} can answer it with `no-store` instead of the configured
+   * cache TTLs. Defaults to `'flyo-draft'`; pass your own name to rename it, or
+   * `false` to switch the redirect off entirely (drafts then still skip Next's
+   * own render cache, but browser and CDN cache them like any other page).
+   */
+  draftUrlMarker?: string | false;
 }): FlyoInstance {
   const configuration = new Configuration({ apiKey: accessToken });
 
@@ -300,6 +325,7 @@ export function initNitro({
     liveEdit: liveEdit ?? false,
     serverCacheTtl: serverCacheTtl ?? 1200,
     clientCacheTtl: clientCacheTtl ?? 900,
+    draftUrlMarker: draftUrlMarker === false ? null : (draftUrlMarker ?? DEFAULT_DRAFT_URL_MARKER),
   };
 
   // A site is multilingual only with more than one configured locale. A bare
@@ -407,12 +433,19 @@ export function initNitro({
       throw new Error('baseUrl is not configured. Please set it in initNitro().');
     }
 
+    // `SitemapinterfaceInner`, not `EntityinterfaceInner`: since SDK v2 the
+    // endpoint has a model of its own, carrying exactly what a sitemap needs —
+    // `href`, `updated_at`, `entity_unique_id`. Title, teaser, image and
+    // `entity_time_start` are *not* on it; read those from `SearchApi.search()`
+    // or `EntitiesApi` instead. Leave the array unannotated so the compiler can
+    // point at any read that outgrew the model.
     const items = await sitemapApi.sitemap({ lang: sitemapLang });
 
     // The API resolves the final URL path of every sitemap item into `href`
     // (all language variants included), so we no longer stitch a path together
-    // from `routes` / `entity_slug`. Items without an `href` have no reachable
-    // route and are skipped — emitting them would duplicate the base URL.
+    // from the deprecated `routes` / `entity_slug` / `entity_type` fields.
+    // Items without an `href` have no reachable route and are skipped —
+    // emitting them would duplicate the base URL.
     return items.reduce<MetadataRoute.Sitemap>((entries, item) => {
       const href = item.href?.trim();
 
@@ -813,11 +846,77 @@ function buildSocialImageUrl(
 }
 
 /**
+ * Take a resolved draft out of every cache.
+ *
+ * `is_draft` only becomes known once the API has answered, half-way through the
+ * render — and a Server Component cannot set response headers. So this does the
+ * two things that *are* possible from inside a render:
+ *
+ * 1. Reading `headers()` is a Next.js *dynamic API*: the call alone marks this
+ *    render dynamic, which keeps the draft out of Next's own Full Route Cache
+ *    and ISR store. Without it the first visit to a draft token would be
+ *    rendered once and then replayed to everyone else from the server cache —
+ *    including after the link has expired.
+ * 2. It redirects once onto the same URL carrying the draft marker, which is
+ *    the signal {@link createProxy} reads to answer with `no-store` for the
+ *    browser *and* the CDN. Step 1 alone only covers Next's server cache: the
+ *    proxy sets `Cache-Control` before the render runs, and Next only fills in
+ *    a `Cache-Control` that is not already there.
+ *
+ * The redirect is skipped when the URL is already marked, when the instance
+ * turned marking off (`draftUrlMarker: false`), and when the proxy is not in
+ * front of this route — without it there is neither a cache header to correct
+ * nor a way to learn the current URL.
+ */
+async function enterDraftMode(flyo: FlyoInstance): Promise<void> {
+  let requestHeaders: Headers;
+
+  try {
+    requestHeaders = await headers();
+  } catch {
+    // Outside a request scope (unit tests, build-time probing) `headers()`
+    // throws, and there is no response to keep out of a cache anyway.
+    return;
+  }
+
+  const marker = flyo.state.draftUrlMarker;
+
+  if (!marker) {
+    return;
+  }
+
+  // Second pass: the proxy already saw the marker and has answered `no-store`.
+  if (requestHeaders.get(DRAFT_REQUEST_HEADER) === '1') {
+    return;
+  }
+
+  // Set by `createProxy()` on every request. Its absence means the proxy does
+  // not cover this route, so no cache header of ours is in the way.
+  const requestPath = requestHeaders.get(DRAFT_PATH_HEADER);
+
+  if (!requestPath) {
+    return;
+  }
+
+  const target = withDraftMarker(requestPath, marker);
+
+  // `withDraftMarker` hands the path back unchanged when the marker is already
+  // on it, so this is the guard that makes a redirect loop impossible — even on
+  // a host that drops the header checked above.
+  if (target === requestPath) {
+    return;
+  }
+
+  redirect(target);
+}
+
+/**
  * Internal helper to wrap and cache entity resolvers.
  *
  * Also publishes the entity's language-switcher links into the request-scoped
  * store (see {@link publishLanguageLinks}) so a switcher in shared chrome can
- * read them via `readLanguageLinks()`.
+ * read them via `readLanguageLinks()`, and takes a draft response out of the
+ * caches (see {@link enterDraftMode}).
  */
 function createCachedEntityResolver<T>(
   flyo: FlyoInstance,
@@ -863,6 +962,12 @@ function createCachedEntityResolver<T>(
         ? getLanguageLinks(entity.translation, { currentLang: entity.language, locales: flyo.state.locales })
         : [],
     );
+
+    // After the publish above, so a redirect never leaves a switcher in shared
+    // chrome waiting on links that are no longer coming.
+    if (entity.is_draft) {
+      await enterDraftMode(flyo);
+    }
 
     return entity;
   });
@@ -946,6 +1051,72 @@ export async function NitroDebugInfo({ flyo }: { flyo: FlyoInstance }) {
 
   return (
     <template dangerouslySetInnerHTML={{ __html: `<!-- ${debugInfo} -->` }} suppressHydrationWarning />
+  );
+}
+
+// ─── Draft links ─────────────────────────────────────────────────────────────
+
+/**
+ * Format a `draft_expires_at` timestamp for the notice below.
+ *
+ * The API sends Unix **seconds**, `Date` expects milliseconds. Rendered in UTC
+ * on purpose: the server has no idea what timezone the reviewer is in, and a
+ * locale-dependent string would differ between the server and the client and
+ * trip a hydration warning.
+ */
+function formatDraftExpiry(expiresAt: number | null | undefined): string | undefined {
+  if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt) || expiresAt <= 0) {
+    return undefined;
+  }
+
+  const date = new Date(expiresAt * 1000);
+
+  if (Number.isNaN(date.getTime())) {
+    return undefined;
+  }
+
+  return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+}
+
+/**
+ * A visible hint that the page being looked at is a **draft preview** — an
+ * expiring snapshot of an entity that is still offline in Flyo — and not the
+ * live page. Renders nothing for a regular entity, so it is safe to mount
+ * unconditionally.
+ *
+ * {@link nitroEntityRoute} renders it for you; mount it yourself only when you
+ * turned that off (`draftNotice: false`) to place or style it differently.
+ *
+ * @example
+ * ```tsx
+ * <NitroDraftNotice entity={entity} />
+ * ```
+ */
+export function NitroDraftNotice({ entity }: { entity: Entity }) {
+  if (!entity.is_draft) {
+    return null;
+  }
+
+  const expiry = formatDraftExpiry(entity.draft_expires_at);
+
+  return (
+    <div
+      data-flyo-draft-notice=""
+      role="status"
+      style={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 2147483647,
+        padding: '8px 16px',
+        background: '#facc15',
+        color: '#1c1917',
+        font: '500 14px/1.4 system-ui, sans-serif',
+        textAlign: 'center',
+      }}
+    >
+      Draft preview — this content is not published
+      {expiry ? <> · link expires {expiry}</> : null}
+    </div>
   );
 }
 
@@ -1321,6 +1492,12 @@ export function nitroEntityRoute<T = any>(
   options: {
     resolver: EntityResolver<T>;
     render?: (entity: Entity) => React.ReactNode;
+    /**
+     * Render {@link NitroDraftNotice} above the content when the resolved entity
+     * came from a draft link. Defaults to `true`; set it to `false` to place or
+     * style the hint yourself. Regular entities are unaffected either way.
+     */
+    draftNotice?: boolean;
   }
 ) {
   const cachedResolver = createCachedEntityResolver(flyo, options.resolver);
@@ -1334,9 +1511,13 @@ export function nitroEntityRoute<T = any>(
     // `render` function is the duplicate that gets skipped, not this one.
     const structuredData = <NitroEntityJsonLd entity={entity} />;
 
+    // Renders nothing unless this response came from a draft link.
+    const draftNotice = options.draftNotice === false ? null : <NitroDraftNotice entity={entity} />;
+
     if (!flyo.isMultilingual()) {
       return (
         <>
+          {draftNotice}
           {structuredData}
           {content}
         </>
@@ -1353,6 +1534,7 @@ export function nitroEntityRoute<T = any>(
     return (
       <>
         <NitroLanguageLinks links={languageLinks} />
+        {draftNotice}
         {structuredData}
         {content}
       </>

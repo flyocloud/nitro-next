@@ -117,6 +117,7 @@ export const config = {
 The proxy middleware:
 - Sets appropriate cache headers for CDN (s-maxage) and browser (max-age) based on your configuration
 - Disables caching when live edit mode is enabled (development mode)
+- Disables caching for [draft links](#draft-links), so an expiring preview never lands in a shared CDN cache
 - Uses Next.js middleware to intercept all requests matching the configured pattern
 - Reads cache TTL values from your Nitro configuration (`serverCacheTtl` and `clientCacheTtl`)
 
@@ -124,6 +125,9 @@ The proxy middleware:
 - `liveEdit` - Enables live edit mode (typically controlled via environment variable), disables caching (default: false)
 - `serverCacheTtl` - CDN cache duration in seconds (default: 1200 = 20 min)
 - `clientCacheTtl` - Browser cache duration in seconds (default: 900 = 15 min)
+- `draftUrlMarker` - Query parameter draft links are marked with (default: `'flyo-draft'`, `false` to switch it off) — see [Draft links](#draft-links)
+
+**The proxy is what makes the cache headers, so keep it in front of your content routes.** Next.js only fills in a `Cache-Control` that is not already set, so whatever the proxy writes is what the browser and the CDN see — a Server Component cannot correct it later.
 
 ### 4. Setup Layout
 
@@ -451,6 +455,32 @@ export default function MyComponent({ block }) {
 This keeps custom WYSIWYG node registration centralized and consistent across your app.
 You can still override styles per usage, for example:
 `<AppWysiwyg json={block.content.json} className="wysiwyg article-body" />`.
+
+#### Custom mark renderers
+
+`components` replaces whole **nodes**. Inline **marks** (`bold`, `italic`,
+`underline`, `strikethrough`, `link`) live inside the generated HTML string, so
+they cannot be React components — override them with `markRenderers`, which
+returns HTML and is merged over the built-in renderers.
+
+```tsx
+<FlyoWysiwyg
+  json={json}
+  className="wysiwyg"
+  markRenderers={{
+    // Mark links the editor set to open in a new tab with a trailing arrow
+    link: (text, mark) => {
+      const attrs = mark.attrs as Record<string, string>;
+      const external = attrs?.target === '_blank';
+      return `<a href="${attrs.href}"${external ? ' target="_blank" rel="noopener noreferrer"' : ''}>${text}${external ? ' <span aria-hidden="true">\u2197</span>' : ''}</a>`;
+    },
+  }}
+/>
+```
+
+An override replaces the built-in renderer for that mark entirely, so it must
+emit every attribute you still want (`href`, `target`, …). Marks you do not list
+keep their default rendering.
 
 ### 9. Image Optimization with Flyo CDN
 
@@ -813,6 +843,67 @@ is an error.
 
 This pattern works with any route structure: `[slug]`, `[id]`, `[uniqueid]`, `[whatever]` - you control the resolution logic!
 
+#### Draft links
+
+A **draft link** is a shareable, expiring snapshot of an entity that is still *offline* in Flyo — the only way such content can be looked at on the website at all. Flyo hands out a link whose opaque token takes the place of the slug or the unique id, so it arrives at the entity route you already have:
+
+```
+https://example.com/blog/9f2c1e0a4b7d…
+```
+
+The response is the usual `Entity`, with two extra fields:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `entity.is_draft` | `boolean` | `false` on every regular response, `true` when the token resolved to a draft |
+| `entity.draft_expires_at` | `number \| null` | Unix timestamp (seconds) at which the link stops working; `null` when `is_draft` is `false`. After it expires the same URL answers 404 |
+
+**Caching is switched off for a draft response — browser, CDN and Next.js alike.** A draft must not be stored anywhere a second visitor could be served from, and it must not linger in a browser cache after the link has expired. Because `is_draft` is only known *after* the API has answered — and a Server Component cannot set response headers — the route bounces the request once onto a marked URL that the proxy answers with `no-store`:
+
+```
+GET /blog/<token>                → 307 /blog/<token>?flyo-draft=1
+GET /blog/<token>?flyo-draft=1   → 200  Cache-Control: no-store
+                                        CDN-Cache-Control: no-store
+                                        Vercel-CDN-Cache-Control: no-store
+```
+
+Nothing to wire up: it happens for you as long as `createProxy()` covers the route. Notes:
+
+- The marker only ever affects the URL that carries it. `?flyo-draft=1` is a separate cache key from the clean URL, so appending it by hand does not disable caching for your visitors — it only bypasses the cache for that one URL variant, exactly like any other unknown query parameter already does.
+- Rename it with `initNitro({ draftUrlMarker: 'preview' })`, or switch the redirect off with `draftUrlMarker: false`. With it off, drafts still skip Next.js's own render cache, but the browser and CDN cache them like any other page.
+- Draft URLs arriving in a different shape (a `/preview/…` prefix, a cookie your own route handler sets)? Tell the proxy how to spot them: `createProxy(flyo, { isDraftRequest: (req) => … })`.
+
+**Your resolver needs no change.** A draft token is requested through the same `entityBySlug()` / `entityByUniqueid()` call as any other entity, and the `typeId` filter does not apply to a token — so a type-filtered route resolves draft links exactly as it resolves published ones.
+
+**One thing to check in an existing integration:** let the token through your router. A route that validates its parameter against a slug pattern — or an entity route combined with `dynamicParams = false` — rejects draft tokens before the API is ever asked:
+
+```diff
+  const resolver: EntityResolver<{ slug: string }> = async (params) => {
+    const { slug } = await params;
+-   if (!/^[a-z0-9-]+$/.test(slug)) notFound();   // rejects the token
+    return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
+  };
+```
+
+**The draft banner.** `nitroEntityRoute` renders a `NitroDraftNotice` above your content whenever the response is a draft, so a reviewer can tell a preview from the live page:
+
+> Draft preview — this content is not published · link expires 2034-01-01 00:00 UTC
+
+It renders nothing for published entities. Pass `draftNotice: false` to place or style it yourself:
+
+```tsx
+export default nitroEntityRoute(flyo, {
+  resolver,
+  draftNotice: false,
+  render: (entity: Entity) => (
+    <>
+      <NitroDraftNotice entity={entity} />
+      <article>…</article>
+    </>
+  )
+});
+```
+
 ### 12. Multilanguage (i18n)
 
 Flyo Nitro is fully multilingual. This section shows how to make your Next.js app locale-aware.
@@ -1057,6 +1148,10 @@ export default async function sitemap() {
 3. **Uses configured baseUrl**: It prefixes the `href` with the `baseUrl` from your Nitro configuration; items without an `href` have no reachable route and are skipped
 4. **Uses `updated_at` as `lastmod`**: Every item also ships an `updated_at` Unix timestamp — the last time the content behind that URL actually changed — which becomes the entry's `lastModified`. Items without a usable timestamp are emitted without a `lastmod`
 5. **Returns Next.js format**: Outputs the standard `MetadataRoute.Sitemap` format that Next.js expects
+
+> **Building your own sitemap from `flyo.getNitroSitemap()`?** Since `@flyo/nitro-typescript` v2 the endpoint has a response model of its own, `SitemapinterfaceInner`, carrying `href`, `updated_at` and `entity_unique_id` — everything a `<loc>`/`<lastmod>` needs. `entity_title`, `entity_teaser`, `entity_image`, `entity_time_start` and `entity_type_id` are **not** on it; read those from `getNitroSearch().search()` or `getNitroEntities()` instead. `entity_type`, `entity_slug` and `routes` are still delivered but deprecated — `href` is the resolved URL for pages and mapped entities alike.
+>
+> Every property on both models is optional, so an explicit `EntityinterfaceInner[]` annotation on a `sitemap()` result still compiles while the dropped fields silently read `undefined`. Drop the annotation (or change it to `SitemapinterfaceInner[]`) and let the compiler point at the reads that need fixing.
 
 > **Why `lastmod` is not simply "now".** Regenerating the sitemap does not change any content, so stamping every entry with the regeneration time would tell search engines the whole site changed every hour. Google discounts `lastmod` for a site once it stops matching reality — `updated_at` keeps the signal truthful, and pages that really did change are the ones that get recrawled.
 
@@ -1318,7 +1413,7 @@ prefix; in a server component (layout, route file) any variable works.
   import { nitroPageGenerateStaticParams } from '@flyo/nitro-next/server';
   export const generateStaticParams = nitroPageGenerateStaticParams(flyo);
   ```
-- **`nitroEntityRoute(flyo, options)`** – Factory that returns an entity detail page handler. Takes a resolver function and optional render function. A resolver that rejects with **HTTP 404** (what `entityBySlug()` does for an unknown slug) or returns `null` renders `not-found.tsx`; every other failure stays a real error. See [Not found vs. error](#not-found-vs-error-no-trycatch-needed).
+- **`nitroEntityRoute(flyo, options)`** – Factory that returns an entity detail page handler. Takes a resolver function, an optional render function, and `draftNotice` (default `true`) to render the draft banner for [draft links](#draft-links). A resolver that rejects with **HTTP 404** (what `entityBySlug()` does for an unknown slug) or returns `null` renders `not-found.tsx`; every other failure stays a real error. See [Not found vs. error](#not-found-vs-error-no-trycatch-needed).
   ```tsx
   import { nitroEntityRoute } from '@flyo/nitro-next/server';
   export default nitroEntityRoute(flyo, { resolver, render });
@@ -1332,10 +1427,15 @@ prefix; in a server component (layout, route file) any variable works.
   ```ts
   import { isApiNotFound } from '@flyo/nitro-next/server';
   ```
-- **`createProxy(flyo)`** – Create a Next.js middleware for cache control. When `locales` are configured it also detects the locale from the first URL segment and sets an `x-flyo-locale` request header for Server Components.
+- **`createProxy(flyo, options?)`** – Create a Next.js middleware for cache control. When `locales` are configured it also detects the locale from the first URL segment and sets an `x-flyo-locale` request header for Server Components. Answers [draft links](#draft-links) with `no-store`; pass `isDraftRequest` to replace how a draft request is recognised.
   ```tsx
   import { createProxy } from '@flyo/nitro-next/proxy';
   export default createProxy(flyo);
+  ```
+- **`NitroDraftNotice`** – Server component that renders a visible "draft preview" banner when the given entity came from a [draft link](#draft-links), and nothing otherwise. `nitroEntityRoute` renders it for you unless you pass `draftNotice: false`.
+  ```tsx
+  import { NitroDraftNotice } from '@flyo/nitro-next/server';
+  <NitroDraftNotice entity={entity} />
   ```
 - **`getLanguageLinks(translations, options?)`** – Map a page's/entity's `translation[]` into a typed `FlyoLanguageLink[]` for a language switcher. Pure — also exported from `@flyo/nitro-next/client`. See [Multilanguage](#12-multilanguage-i18n).
   ```ts
