@@ -427,6 +427,32 @@ This keeps custom WYSIWYG node registration centralized and consistent across yo
 You can still override styles per usage, for example:
 `<AppWysiwyg json={block.content.json} className="wysiwyg article-body" />`.
 
+#### Custom mark renderers
+
+`components` replaces whole **nodes**. Inline **marks** (`bold`, `italic`,
+`underline`, `strikethrough`, `link`) live inside the generated HTML string, so
+they cannot be React components — override them with `markRenderers`, which
+returns HTML and is merged over the built-in renderers.
+
+```tsx
+<FlyoWysiwyg
+  json={json}
+  className="wysiwyg"
+  markRenderers={{
+    // Mark links the editor set to open in a new tab with a trailing arrow
+    link: (text, mark) => {
+      const attrs = mark.attrs as Record<string, string>;
+      const external = attrs?.target === '_blank';
+      return `<a href="${attrs.href}"${external ? ' target="_blank" rel="noopener noreferrer"' : ''}>${text}${external ? ' <span aria-hidden="true">\u2197</span>' : ''}</a>`;
+    },
+  }}
+/>
+```
+
+An override replaces the built-in renderer for that mark entirely, so it must
+emit every attribute you still want (`href`, `target`, …). Marks you do not list
+keep their default rendering.
+
 ### 9. Image Optimization with Flyo CDN
 
 The `FlyoCdnLoader` function provides automatic image optimization through Flyo's CDN. Use it with Next.js Image component for optimized image delivery with automatic format conversion and resizing.

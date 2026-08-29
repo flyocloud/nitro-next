@@ -8,10 +8,12 @@ import { FlyoWysiwyg, WysiwygNode, WysiwygJson, EditableSection } from './client
 jest.mock('@flyo/nitro-js-bridge', () => {
   // Minimal but faithful ProseMirror/TipTap JSON → HTML renderer
   // (mirrors the logic shipped in nitro-js-bridge)
-  function renderNode(node: Record<string, unknown>): string {
+  type MarkRenderers = Record<string, (text: string, mark: Record<string, unknown>) => string> | undefined;
+
+  function renderNode(node: Record<string, unknown>, markRenderers?: MarkRenderers): string {
     const content = node.content as Record<string, unknown>[] | undefined;
     const attrs = node.attrs as Record<string, unknown> | undefined;
-    const children = (content || []).map(renderNode).join('');
+    const children = (content || []).map((child) => renderNode(child, markRenderers)).join('');
 
     switch (node.type) {
       case 'doc':
@@ -23,6 +25,13 @@ jest.mock('@flyo/nitro-js-bridge', () => {
         const marks = node.marks as Array<{ type: string; attrs?: Record<string, unknown> }> | undefined;
         if (marks) {
           for (const mark of marks) {
+            // Custom renderers are merged OVER the built-ins, exactly as the
+            // real bridge does.
+            const custom = markRenderers?.[mark.type];
+            if (custom) {
+              text = custom(text, mark as unknown as Record<string, unknown>);
+              continue;
+            }
             switch (mark.type) {
               case 'bold':
                 text = `<strong>${text}</strong>`;
@@ -63,7 +72,11 @@ jest.mock('@flyo/nitro-js-bridge', () => {
   }
 
   return {
-    wysiwyg: (json: Record<string, unknown>) => renderNode(json),
+    wysiwyg: (
+      json: Record<string, unknown>,
+      _nodeRenderers?: unknown,
+      markRenderers?: MarkRenderers,
+    ) => renderNode(json, markRenderers),
     highlightAndClick: jest.fn(),
     reload: jest.fn(),
   };
@@ -308,6 +321,82 @@ describe('FlyoWysiwyg', () => {
     );
 
     expect(container.firstElementChild!.className).toBe('rich-text');
+  });
+
+  // ── Custom mark renderers ────────────────────────────────────────────
+
+  const linkDoc: WysiwygJson = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          {
+            type: 'text',
+            text: 'Docs',
+            marks: [{ type: 'link', attrs: { href: 'https://example.com', target: '_blank' } }],
+          },
+        ],
+      },
+    ],
+  };
+
+  it('overrides a built-in mark renderer', () => {
+    const { container } = render(
+      <FlyoWysiwyg
+        json={linkDoc}
+        markRenderers={{
+          link: (text, mark) =>
+            `<a href="${(mark.attrs as Record<string, string>).href}" class="ext">${text}</a>`,
+        }}
+      />
+    );
+
+    const a = container.querySelector('a')!;
+    expect(a.className).toBe('ext');
+    expect(a.getAttribute('href')).toBe('https://example.com');
+    // The override replaces the default entirely - no `target` is emitted.
+    expect(a.hasAttribute('target')).toBe(false);
+    expect(a.textContent).toBe('Docs');
+  });
+
+  it('leaves marks it does not override untouched', () => {
+    const { container } = render(
+      <FlyoWysiwyg json={docJson} markRenderers={{ link: (text) => text }} />
+    );
+    expect(container.querySelector('p strong')!.textContent).toBe('Lorem Ipsum');
+  });
+
+  it('applies mark renderers on the grouped path too (with custom components)', () => {
+    const json: WysiwygJson = {
+      type: 'doc',
+      content: [
+        { type: 'image', attrs: { src: 'x.jpg', alt: '' } },
+        ...(linkDoc as { content: WysiwygNode[] }).content,
+      ],
+    };
+
+    function Img({ node }: { node: WysiwygNode }) {
+      const attrs = node.attrs as Record<string, string>;
+      return <img src={attrs.src} alt={attrs.alt} />;
+    }
+
+    const { container } = render(
+      <FlyoWysiwyg
+        json={json}
+        components={{ image: Img }}
+        markRenderers={{ link: (text) => `<a class="ext">${text}</a>` }}
+      />
+    );
+
+    expect(container.querySelector('a')!.className).toBe('ext');
+  });
+
+  it('falls back to the built-in renderers when markRenderers is omitted', () => {
+    const { container } = render(<FlyoWysiwyg json={linkDoc} />);
+    const a = container.querySelector('a')!;
+    expect(a.getAttribute('href')).toBe('https://example.com');
+    expect(a.getAttribute('target')).toBe('_blank');
   });
 
   // ── Doc with only one node ────────────────────────────────────────────
