@@ -332,15 +332,40 @@ export function FlyoClientWrapper({
  *   );
  * }
  * ```
+ *
+ * `components` replaces whole **nodes** with React components. Marks are
+ * inline and live inside the HTML string, so they cannot be React components;
+ * `markRenderers` overrides them at the string level instead, and is handed
+ * straight to `wysiwyg()`'s third parameter, where it is merged over the
+ * built-in mark renderers (`bold`, `italic`, `underline`, `strikethrough`,
+ * `link`).
+ *
+ * @example
+ * ```tsx
+ * // Mark external links with a trailing arrow
+ * <FlyoWysiwyg
+ *   json={block.content.json}
+ *   markRenderers={{
+ *     link: (text, mark) => `<a href="${mark.attrs.href}">${text}</a>`,
+ *   }}
+ * />
+ * ```
  */
 export function FlyoWysiwyg({
   json,
   className = 'wysiwyg',
   components = {},
+  markRenderers,
 }: {
   json: WysiwygJson;
   className?: string;
   components?: Record<string, React.ComponentType<{ node: WysiwygNode }>>;
+  /**
+   * Custom renderers for inline marks, keyed by mark type. Each receives the
+   * already-rendered inner HTML and the mark node, and returns HTML. Merged
+   * over the bridge's built-in mark renderers.
+   */
+  markRenderers?: Record<string, (text: string, mark: { attrs?: Record<string, unknown> } & Record<string, unknown>) => string>;
 }) {
   let nodes: WysiwygNode[] = [];
 
@@ -358,7 +383,7 @@ export function FlyoWysiwyg({
   const hasCustomComponents = nodes.some((node) => components[node.type]);
 
   if (!hasCustomComponents) {
-    const html = nodes.map((node) => wysiwyg(node)).join('');
+    const html = nodes.map((node) => wysiwyg(node, undefined, markRenderers)).join('');
     return <div className={className} dangerouslySetInnerHTML={{ __html: html }} />;
   }
 
@@ -371,7 +396,7 @@ export function FlyoWysiwyg({
     if (Component) {
       groups.push({ type: 'custom', component: Component, node });
     } else {
-      const html = wysiwyg(node);
+      const html = wysiwyg(node, undefined, markRenderers);
       const last = groups[groups.length - 1];
       if (last && last.type === 'html') {
         last.html += html;
