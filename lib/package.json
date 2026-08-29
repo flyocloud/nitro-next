@@ -1,6 +1,6 @@
 {
   "name": "@flyo/nitro-next",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Connecting Flyo Headless Content Hub into your Next.js project.",
   "homepage": "https://dev.flyo.cloud/nitro",
   "keywords": [

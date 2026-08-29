@@ -255,6 +255,35 @@ export default async function Page(props: { params: Promise<{ slug?: string[] }>
 
 The `flyo.pageResolveRoute()` function is React-cached — calling it in both `generateMetadata` and your page component will only trigger a single API request.
 
+#### 404 and error boundaries
+
+Add both Next.js boundaries — Flyo routes use each for a different thing:
+
+```tsx
+// app/not-found.tsx — a page or entity that does not exist (HTTP 404)
+export default function NotFound() {
+  return <h1>Page not found</h1>;
+}
+```
+
+```tsx
+// app/error.tsx — the CMS could not be reached (HTTP 500)
+'use client'
+
+export default function Error({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  return <button onClick={reset}>Try again</button>;
+}
+```
+
+An unknown path, or a `404` from the CMS, renders `not-found.tsx`. Every other
+failure — a `401` from a wrong access token, a `500`, a network error — is a real
+error and renders `error.tsx`, on purpose: answering an outage with a soft 404 on
+every URL is how a site gets de-indexed while the API is merely unreachable. The
+same split applies to entity routes, see [Not found vs. error](#not-found-vs-error-no-trycatch-needed).
+
+> Keep `not-found.tsx` free of any language-switcher publishing — see the
+> [warning in Multilanguage](#12-multilanguage-i18n).
+
 ### 6. Generate Block Types
 
 Flyo can generate fully typed TypeScript definitions for **every block, entity and container** in your Nitro project straight from the OpenAPI schema. This gives you autocomplete and type-safety when building components.
@@ -745,13 +774,72 @@ export default nitroEntityRoute(flyo, {
 });
 ```
 
+#### Not found vs. error (no `try`/`catch` needed)
+
+An entity route is a route for **user-supplied slugs**, so "this entity does not
+exist" is a normal request, not a bug. The helpers answer it for you — a missing
+entity is a **404**, and only a genuine failure is an error:
+
+| The resolver… | HTTP answer | What renders |
+|---|---|---|
+| returns an entity | `200` | your `render` |
+| rejects with **HTTP 404** (what `entityBySlug()` does for an unknown slug) | `404` | `app/not-found.tsx` |
+| returns `null` / `undefined` | `404` | `app/not-found.tsx` |
+| calls `notFound()` itself | `404` | `app/not-found.tsx` |
+| rejects with **anything else** — `401` (wrong access token), `500`, a network failure | `500` | `app/error.tsx` |
+
+So the plain resolver from the examples above is complete — **don't** wrap it in
+a `try`/`catch`:
+
+```tsx
+// Correct: entityBySlug() rejects with 404 for an unknown slug, and the route
+// helper turns exactly that into notFound().
+const resolver: EntityResolver<{ slug: string }> = async (params) => {
+  const { slug } = await params;
+  return flyo.getNitroEntities().entityBySlug({ slug, typeId: 123 });
+};
+```
+
+The last row is deliberate: a CMS outage or a bad token must **not** turn into a
+404. Answering every URL with a soft 404 while the API is unreachable is how a
+site gets de-indexed for being down for ten minutes, so those bubble up as real
+errors — add an `app/error.tsx` to control how they look.
+
+> **Debugging a 404 you didn't expect?** With `liveEdit: true` in `initNitro()`
+> every not-found decision is logged with its route params, e.g.
+> `[flyo] 404 → not-found.tsx: the CMS has no entity for this route (API answered HTTP 404) {"slug":"lion"}`.
+> Production stays silent (crawlers generate far too many 404s to log).
+> Usual causes: a wrong `typeId`, an entity that is not published, or a slug
+> that changed in the CMS.
+
+**Custom routes** that resolve Flyo content without these helpers can reuse the
+same rule via `isApiNotFound`:
+
+```tsx
+import { isApiNotFound } from '@flyo/nitro-next/server';
+import { notFound } from 'next/navigation';
+
+const entity = await flyo
+  .getNitroEntities()
+  .entityBySlug({ slug, typeId: 123 })
+  .catch((error) => {
+    if (!isApiNotFound(error)) throw error; // keep 401/500/network loud
+    notFound();
+  });
+```
+
+Page routes (`nitroPageRoute` / `pageResolveRoute`) follow the same rule: an
+unknown path or a 404 from the CMS renders `not-found.tsx`, every other failure
+is an error.
+
 #### How it Works
 
 1. **Type-safe params**: Define your route params type to match your Next.js route structure
-2. **Custom resolver**: Write a function that takes the params and returns an entity
+2. **Custom resolver**: Write a function that takes the params and returns an entity — or `null`/`undefined` for "no such entity"
 3. **Automatic caching**: The resolver is automatically wrapped with React cache - it's called once per unique params
 4. **Shared resolution**: Both `nitroEntityRoute` and `nitroEntityGenerateMetadata` use the same cached result
 5. **Flexible rendering**: Provide a custom render function or use the default simple renderer
+6. **404 handling**: A missing entity becomes a real `404`, while API and network failures stay real errors — see [Not found vs. error](#not-found-vs-error-no-trycatch-needed)
 
 This pattern works with any route structure: `[slug]`, `[id]`, `[uniqueid]`, `[whatever]` - you control the resolution logic!
 
@@ -1325,15 +1413,19 @@ prefix; in a server component (layout, route file) any variable works.
   import { nitroPageGenerateStaticParams } from '@flyo/nitro-next/server';
   export const generateStaticParams = nitroPageGenerateStaticParams(flyo);
   ```
-- **`nitroEntityRoute(flyo, options)`** – Factory that returns an entity detail page handler. Takes a resolver function, an optional render function, and `draftNotice` (default `true`) to render the draft banner for [draft links](#draft-links).
+- **`nitroEntityRoute(flyo, options)`** – Factory that returns an entity detail page handler. Takes a resolver function, an optional render function, and `draftNotice` (default `true`) to render the draft banner for [draft links](#draft-links). A resolver that rejects with **HTTP 404** (what `entityBySlug()` does for an unknown slug) or returns `null` renders `not-found.tsx`; every other failure stays a real error. See [Not found vs. error](#not-found-vs-error-no-trycatch-needed).
   ```tsx
   import { nitroEntityRoute } from '@flyo/nitro-next/server';
   export default nitroEntityRoute(flyo, { resolver, render });
   ```
-- **`nitroEntityGenerateMetadata(flyo, options)`** – Factory that returns a metadata generator for entity detail pages.
+- **`nitroEntityGenerateMetadata(flyo, options)`** – Factory that returns a metadata generator for entity detail pages. Same not-found handling as `nitroEntityRoute`, on the same cached resolver call.
   ```tsx
   import { nitroEntityGenerateMetadata } from '@flyo/nitro-next/server';
   export const generateMetadata = nitroEntityGenerateMetadata(flyo, { resolver });
+  ```
+- **`isApiNotFound(error)`** – `true` only when a CMS call failed with **HTTP 404** (`error.response.status`, as the generated client rejects it, or a bare `error.status`). The route helpers apply it themselves; use it on custom routes to render a 404 for missing content while a `401`, a `500` or a network failure stays a real error. See [Not found vs. error](#not-found-vs-error-no-trycatch-needed).
+  ```ts
+  import { isApiNotFound } from '@flyo/nitro-next/server';
   ```
 - **`createProxy(flyo, options?)`** – Create a Next.js middleware for cache control. When `locales` are configured it also detects the locale from the first URL segment and sets an `x-flyo-locale` request header for Server Components. Answers [draft links](#draft-links) with `no-store`; pass `isDraftRequest` to replace how a draft request is recognised.
   ```tsx
@@ -1404,7 +1496,7 @@ After calling `initNitro()`, the returned instance exposes:
 | `flyo.getNitroEntities()` | `EntitiesApi` | Get the Entities API client |
 | `flyo.getNitroSitemap()` | `SitemapApi` | Get the Sitemap API client |
 | `flyo.getNitroSearch()` | `SearchApi` | Get the Search API client |
-| `flyo.pageResolveRoute(props)` | `Promise<{ page, path, lang, cfg }>` | Resolve a page from route params, incl. the active `lang` (React-cached) |
+| `flyo.pageResolveRoute(props)` | `Promise<{ page, path, lang, cfg }>` | Resolve a page from route params, incl. the active `lang` (React-cached). Unknown path or CMS 404 → `notFound()`; other failures throw |
 | `flyo.sitemap()` | `Promise<MetadataRoute.Sitemap>` | Generate the Next.js sitemap |
 | `flyo.state` | `NitroState` | Access the configuration state |
 
