@@ -47,7 +47,7 @@
   ],
   "dependencies": {
     "@flyo/nitro-js-bridge": "^1.5.0",
-    "@flyo/nitro-typescript": "^2.0.0"
+    "@flyo/nitro-typescript": "^2.1.0"
   },
   "peerDependencies": {
     "next": ">=16.0.4",

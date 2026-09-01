@@ -1458,12 +1458,23 @@ export function nitroEntityGenerateMetadata<T = any>(
     const ogImage = buildSocialImageUrl(image, 1200, 630);
     const twImage = buildSocialImageUrl(image, 1200, 600);
 
-    // The entities endpoint carries no `href`, so an entity's canonical can
-    // only come from its translations.
-    const alternates = buildLanguageAlternates(entity.translation, {
+    // The entities endpoint carries no `href`, so the hreflang links come from
+    // the translations. The canonical is `entity.canonical` — the one route the
+    // entity mapping flags as canonical — resolved against `baseUrl`, taking
+    // priority over the translation-derived one; the translations still cover it
+    // as a fallback when the API sends none.
+    const canonicalHref = entity.canonical?.trim();
+    let alternates = buildLanguageAlternates(entity.translation, {
       currentLang: entity.language,
       baseUrl: flyo.state.baseUrl,
     });
+
+    if (canonicalHref) {
+      alternates = {
+        ...alternates,
+        canonical: resolveContentUrl(canonicalHref, flyo.state.baseUrl),
+      };
+    }
 
     return {
       title,
