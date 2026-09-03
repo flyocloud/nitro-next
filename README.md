@@ -213,6 +213,16 @@ The canonical is self-referencing and needs no configuration. It comes from the 
 
 Without a `baseUrl` the path is emitted as-is and Next.js resolves it against [`metadataBase`](https://nextjs.org/docs/app/api-reference/functions/generate-metadata#metadatabase), which falls back to `http://localhost:3000` — so set one of the two in production, or the canonical points at localhost. Pages whose Flyo `type` is a link target rather than a document (`email`, `tel`, `file`) get no canonical.
 
+#### noindex for non-indexable pages
+
+A page can be marked as **not indexable** in Flyo (a thank-you page, a landing page variant, an internal detail view). Such a page is kept out of `flyo.sitemap()` and the search endpoint by the API, but it is still delivered and stays reachable by URL — `is_indexable` is not access control — so the crawlers have to be told explicitly. Both metadata factories do that automatically:
+
+```html
+<meta name="robots" content="noindex">
+```
+
+An indexable page emits no `robots` tag at all, which leaves whatever your `layout.tsx` sets in place. Entity detail pages follow the same rule from the entity's own `is_indexable`, which the API turns off when every page placing the entity's content pool is non-indexable — and always for a [draft link](#draft-links), so a shared preview URL never enters an index.
+
 To override a field, wrap the factory and spread its result:
 
 ```tsx

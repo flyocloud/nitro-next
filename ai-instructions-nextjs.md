@@ -347,6 +347,8 @@ If the existing project already has a catch-all route or route groups, inspect t
 
 `nitroPageGenerateMetadata` emits the title, description, Open Graph / Twitter tags **and** a self-referencing canonical URL (from the page's `href`, or the active locale's `translation[]` entry on a multilingual site) — do not hand-write `alternates.canonical` for Nitro pages. It is prefixed with the `baseUrl` from `initNitro()`; without one, the path is resolved against Next.js' `metadataBase`, which defaults to `http://localhost:3000` — so make sure `baseUrl` is configured in production.
 
+It also emits `robots: { index: false }` — `<meta name="robots" content="noindex">` — whenever the API flags the page as non-indexable (`is_indexable: 0`); `nitroEntityGenerateMetadata` does the same from the entity's `is_indexable`, which is always `false` for a draft link. Indexable content emits no `robots` tag, so a `robots` set in `layout.tsx` stays in effect — do not hand-write `noindex` handling for Nitro routes.
+
 ### 8. Prepare a project WYSIWYG wrapper
 Most Flyo Nitro projects use WYSIWYG fields. Create a reusable wrapper even if there are no custom nodes yet.
 

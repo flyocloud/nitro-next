@@ -719,6 +719,30 @@ function buildLanguageAlternates(
 }
 
 /**
+ * Turn the API's `is_indexable` flag into Next.js `robots` metadata.
+ *
+ * A page or entity marked non-indexable is kept out of the sitemap and the
+ * search endpoint by the API, but it stays reachable by URL — it is not access
+ * control — so the only thing left for the consumer to do is tell the crawlers:
+ * `<meta name="robots" content="noindex">`. Entity drafts are always flagged
+ * non-indexable, so a shared draft link never enters an index either.
+ *
+ * The pages endpoint sends `0`/`1`, the entities endpoint a boolean; both are
+ * read the same way. `undefined` — an older API, or a payload without the field
+ * — means indexable, and emits no tag at all, leaving the default behaviour and
+ * any `robots` a layout already set untouched.
+ */
+function buildRobotsDirective(
+  isIndexable: number | boolean | null | undefined,
+): Metadata['robots'] | undefined {
+  if (isIndexable === undefined || isIndexable === null) {
+    return undefined;
+  }
+
+  return Number(isIndexable) === 0 ? { index: false } : undefined;
+}
+
+/**
  * Build a social-preview image URL in the Flyo CDN query format
  * (`?w=…&h=…&format=jpg`), the successor of the deprecated `/thumb/{w}x{h}`
  * path segment. Both `w` and `h` are set, so the CDN crops and applies the
@@ -1304,10 +1328,14 @@ export function nitroPageGenerateMetadata(flyo: FlyoInstance) {
       baseUrl: flyo.state.baseUrl,
     });
 
+    // `is_indexable: 0` means the page is deliberately kept out of the indexes.
+    const robots = buildRobotsDirective(page.is_indexable);
+
     return {
       title,
       description,
       ...(alternates ? { alternates } : {}),
+      ...(robots ? { robots } : {}),
       openGraph: {
         title,
         description,
@@ -1476,10 +1504,15 @@ export function nitroEntityGenerateMetadata<T = any>(
       };
     }
 
+    // `is_indexable: false` — every page placing the entity's content pool is
+    // non-indexable, or this is a draft link. Either way: noindex.
+    const robots = buildRobotsDirective(entity.is_indexable);
+
     return {
       title,
       description,
       ...(alternates ? { alternates } : {}),
+      ...(robots ? { robots } : {}),
       openGraph: {
         title,
         description,
