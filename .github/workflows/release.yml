@@ -7,16 +7,24 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm trusted publishing (OIDC)
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
+          # node 24 bundles npm 11.x, which trusted publishing needs (>= 11.5.1).
+          # no registry-url here on purpose: it would write an .npmrc authToken
+          # line and npm must fall through to OIDC instead of a token.
+          node-version: "24"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -39,5 +47,3 @@ jobs:
       - name: Publish to NPM
         working-directory: lib
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
